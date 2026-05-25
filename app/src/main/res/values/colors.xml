@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="phonetube_primary">#6C63FF</color>
+    <color name="phonetube_primary_dark">#5A52E0</color>
+    <color name="splash_background">#0F0F0F</color>
+    <color name="ic_launcher_background">#6C63FF</color>
+</resources>

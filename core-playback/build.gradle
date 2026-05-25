@@ -1,0 +1,52 @@
+apply from: gradle.ext.sharedModulesConstants
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'app.phonetube.core.playback'
+    compileSdkVersion project.ext.compileSdkVersion
+    buildToolsVersion project.ext.buildToolsVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion project.ext.compileSdkVersion
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    flavorDimensions 'default'
+    productFlavors {
+        stphonetube {}
+    }
+}
+
+dependencies {
+    implementation project(':core-media')
+    implementation project(':sharedutils')
+    implementation project(':mediaserviceinterfaces')
+    implementation project(':youtubeapi')
+
+    implementation project(':exoplayer-library-core')
+    implementation project(':exoplayer-library-hls')
+    implementation project(':exoplayer-library-dash')
+    implementation project(':exoplayer-library-ui')
+    implementation project(':exoplayer-extension-okhttp')
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$kotlinxVersion"
+    implementation "io.reactivex.rxjava2:rxjava:$rxJavaVersion"
+}

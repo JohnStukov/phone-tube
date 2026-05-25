@@ -1,0 +1,103 @@
+package app.phonetube.ui.player
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import app.phonetube.core.playback.PhonePlayerController
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+enum class PlayerDisplayMode {
+    NONE,
+    FULL,
+    MINI
+}
+
+data class ActivePlayback(
+    val videoId: String,
+    val isLive: Boolean,
+    val title: String,
+    val author: String?,
+    val mode: PlayerDisplayMode,
+    val offsetInitialized: Boolean = false,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f
+)
+
+class PlaybackHostViewModel(application: Application) : AndroidViewModel(application) {
+
+    private var controller: PhonePlayerController? = null
+    private val _session = MutableStateFlow<ActivePlayback?>(null)
+    val session: StateFlow<ActivePlayback?> = _session.asStateFlow()
+
+    fun getOrCreateController(): PhonePlayerController {
+        val existing = controller
+        if (existing != null) return existing
+        return PhonePlayerController(getApplication()).also { controller = it }
+    }
+
+    fun onEnterPlayerScreen(
+        videoId: String,
+        isLive: Boolean,
+        title: String,
+        author: String?
+    ) {
+        val previous = _session.value
+        _session.value = ActivePlayback(
+            videoId = videoId,
+            isLive = isLive,
+            title = title,
+            author = author,
+            mode = PlayerDisplayMode.FULL,
+            offsetInitialized = previous?.offsetInitialized == true,
+            offsetX = previous?.offsetX ?: 0f,
+            offsetY = previous?.offsetY ?: 0f
+        )
+    }
+
+    fun minimize(videoId: String, isLive: Boolean, title: String, author: String?) {
+        val previous = _session.value
+        _session.value = ActivePlayback(
+            videoId = videoId,
+            isLive = isLive,
+            title = title.ifBlank { videoId },
+            author = author,
+            mode = PlayerDisplayMode.MINI,
+            offsetInitialized = previous?.offsetInitialized == true,
+            offsetX = previous?.offsetX ?: 0f,
+            offsetY = previous?.offsetY ?: 0f
+        )
+    }
+
+    fun setFullMode() {
+        _session.update { current ->
+            current?.copy(mode = PlayerDisplayMode.FULL) ?: current
+        }
+    }
+
+    fun updateMiniOffset(x: Float, y: Float, initialized: Boolean = true) {
+        _session.update { current ->
+            current?.copy(
+                offsetX = x,
+                offsetY = y,
+                offsetInitialized = initialized
+            ) ?: current
+        }
+    }
+
+    fun canMinimize(controller: PhonePlayerController): Boolean {
+        return controller.getCurrentVideoId() != null
+    }
+
+    fun stop() {
+        controller?.release()
+        controller = null
+        _session.value = null
+    }
+
+    override fun onCleared() {
+        stop()
+        super.onCleared()
+    }
+}

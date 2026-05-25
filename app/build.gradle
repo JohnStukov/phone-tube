@@ -1,0 +1,108 @@
+apply from: gradle.ext.sharedModulesConstants
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
+android {
+    namespace 'app.phonetube'
+    compileSdkVersion project.ext.compileSdkVersion
+    buildToolsVersion project.ext.buildToolsVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.4.3'
+    }
+
+    defaultConfig {
+        applicationId 'app.phonetube'
+        minSdkVersion 21
+        targetSdkVersion project.ext.compileSdkVersion
+        versionCode 1
+        versionName '1.0.0'
+        multiDexEnabled true
+        missingDimensionStrategy 'default', 'stphonetube'
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+        }
+        debug {
+            debuggable true
+        }
+    }
+
+    flavorDimensions 'default'
+    productFlavors {
+        stphonetube {}
+    }
+}
+
+dependencies {
+    implementation project(':core-media')
+    implementation project(':core-playback')
+    implementation project(':youtubeapi')
+    implementation project(':j2v8')
+    implementation project(':exoplayer-library-core')
+    implementation project(':exoplayer-library-ui')
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$kotlinxVersion"
+
+    implementation platform('androidx.compose:compose-bom:2023.06.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2'
+    implementation 'androidx.navigation:navigation-compose:2.7.6'
+
+    implementation "androidx.core:core-ktx:$kotlinCoreXVersion"
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    implementation "com.google.android.material:material:$materialVersion"
+    implementation "androidx.multidex:multidex:$multiDexVersion"
+
+    implementation 'io.coil-kt:coil-compose:2.2.2'
+    implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
+
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+}

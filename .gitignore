@@ -1,0 +1,36 @@
+# --- Secretos y firma (NUNCA subir) ---
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# --- Build / Gradle ---
+.gradle/
+build/
+**/build/
+**/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+output.json
+
+# --- Android Studio / IDE ---
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Cursor / índices locales ---
+.cursor/
+.codegraph/
+
+# --- Logs y temporales ---
+*.log
+*.tmp
+*.swp
+
+# --- Opcional: descomenta si no quieres subir reglas de Cursor ---
+# .cursor/
