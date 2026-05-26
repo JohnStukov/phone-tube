@@ -1,9 +1,13 @@
 package app.phonetube.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,16 +30,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.phonetube.R
+import app.phonetube.ui.components.AppVersionLabel
+import app.phonetube.core.playback.AudioLanguageCatalog
+import app.phonetube.core.playback.AudioLanguageMode
+import app.phonetube.core.playback.PlayerPrefs
 import app.phonetube.core.playback.SponsorBlockPrefs
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { SponsorBlockPrefs(context) }
+    val playerPrefs = remember { PlayerPrefs(context) }
     var sbEnabled by remember { mutableStateOf(prefs.isEnabled) }
+    var audioUseSystem by remember {
+        mutableStateOf(playerPrefs.audioLanguageMode == AudioLanguageMode.SYSTEM)
+    }
+    var manualAudioCode by remember {
+        mutableStateOf(playerPrefs.audioLanguageCode ?: Locale.getDefault().language)
+    }
     var altServer by remember { mutableStateOf(prefs.useAltServer) }
     val categories = remember { SponsorBlockPrefs.ALL_CATEGORIES }
     var categoryStates by remember {
@@ -85,11 +102,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             )
 
-            Divider(modifier = Modifier.padding(vertical = 12.dp))
-
             Text(
                 text = stringResource(R.string.settings_sb_categories),
-                style = MaterialTheme.typography.titleSmall
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
             )
 
             categories.forEach { category ->
@@ -104,6 +120,77 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 )
             }
+
+            Divider(modifier = Modifier.padding(vertical = 12.dp))
+
+            Text(
+                text = stringResource(R.string.settings_audio_language),
+                style = MaterialTheme.typography.titleMedium
+            )
+            SettingSwitch(
+                title = stringResource(R.string.settings_audio_use_system),
+                checked = audioUseSystem,
+                onCheckedChange = { useSystem ->
+                    audioUseSystem = useSystem
+                    playerPrefs.audioLanguageMode = if (useSystem) {
+                        AudioLanguageMode.SYSTEM
+                    } else {
+                        AudioLanguageMode.MANUAL
+                    }
+                    if (!useSystem) {
+                        playerPrefs.audioLanguageCode = manualAudioCode
+                    }
+                }
+            )
+            if (!audioUseSystem) {
+                Text(
+                    text = stringResource(R.string.settings_audio_manual),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                AudioLanguageCatalog.COMMON_LANGUAGE_CODES.forEach { code ->
+                    val label = languageDisplayName(code)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                manualAudioCode = code
+                                playerPrefs.audioLanguageCode = code
+                                playerPrefs.audioLanguageMode = AudioLanguageMode.MANUAL
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = manualAudioCode == code,
+                            onClick = {
+                                manualAudioCode = code
+                                playerPrefs.audioLanguageCode = code
+                                playerPrefs.audioLanguageMode = AudioLanguageMode.MANUAL
+                            }
+                        )
+                        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            AppVersionLabel(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.settings_made_by),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 32.dp, bottom = 24.dp)
+            )
         }
     }
 }
@@ -140,3 +227,8 @@ private fun categoryLabel(category: String): String {
         else -> category
     }
 }
+
+private fun languageDisplayName(code: String): String =
+    runCatching {
+        Locale.forLanguageTag(code).getDisplayName(Locale.getDefault())
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: code.uppercase()

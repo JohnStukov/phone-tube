@@ -3,14 +3,19 @@ package app.phonetube.core.playback
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import app.phonetube.core.media.PlaybackRestrictions
 import app.phonetube.core.media.SubtitleOption
 import app.phonetube.core.media.YouTubeRepository
+import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.ExoPlayerFactory
 import com.google.android.exoplayer2.PlaybackParameters
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.source.MediaSource
+import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.ui.PlayerView
+import com.google.android.exoplayer2.util.Util
+import java.lang.ref.WeakReference
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,13 +28,15 @@ class PhonePlayerController(
     context: Context,
     private val repository: YouTubeRepository = YouTubeRepository(context),
     private val sponsorBlockPrefs: SponsorBlockPrefs = SponsorBlockPrefs(context),
-    private val playerPrefs: PlayerPrefs = PlayerPrefs(context)
+    private val playerPrefs: PlayerPrefs = PlayerPrefs(context),
+    private val positionStore: PlaybackPositionStore = PlaybackPositionStore.get(context)
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val player: SimpleExoPlayer = ExoPlayerFactory.newSimpleInstance(appContext)
+    private val trackSelector = DefaultTrackSelector()
+    private val player: SimpleExoPlayer = ExoPlayerFactory.newSimpleInstance(appContext, trackSelector)
     private val mediaSourceFactory = SimpleExoMediaSourceFactory(appContext)
     private val subtitleMediaSourceFactory = SubtitleMediaSourceFactory(appContext)
     private var sponsorBlockEngine: SponsorBlockEngine? = null
@@ -39,6 +46,7 @@ class PhonePlayerController(
     private var selectedStreamUrl: String? = null
     private var selectedAudioStreamUrl: String? = null
     private var selectedSubtitle: SubtitleOption? = null
+    private var attachedPlayerView = WeakReference<PlayerView>(null)
     private val formatCache = mutableMapOf<String, MediaItemFormatInfo>()
 
     var onSegmentsChanged: ((List<SeekSegment>) -> Unit)? = null
@@ -56,14 +64,27 @@ class PhonePlayerController(
     }
 
     private fun notifyProgress() {
-        onProgressUpdate?.invoke(player.currentPosition, player.duration)
+        val position = player.currentPosition
+        val duration = player.duration
+        onProgressUpdate?.invoke(position, duration)
+        persistProgress(position, duration)
+    }
+
+    private fun persistProgress(positionMs: Long, durationMs: Long) {
+        if (isLive) return
+        val videoId = currentVideoId ?: return
+        positionStore.savePositionMs(videoId, positionMs, durationMs)
     }
 
     init {
+        applyPreferredAudioLanguage(playerPrefs.resolvePreferredAudioLanguage())
         player.addListener(object : Player.EventListener {
             override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_READY -> {
+                        if (isLive) {
+                            seekToLiveEdge()
+                        }
                         if (playWhenReady) {
                             mainHandler.removeCallbacks(tickRunnable)
                             mainHandler.post(tickRunnable)
@@ -78,16 +99,22 @@ class PhonePlayerController(
     }
 
     fun attachPlayerView(playerView: PlayerView) {
+        attachedPlayerView = WeakReference(playerView)
         playerView.player = player
-        playerView.subtitleView?.let { subtitleView ->
-            subtitleView.setApplyEmbeddedStyles(true)
-            subtitleView.setApplyEmbeddedFontSizes(false)
-            subtitleView.setFractionalTextSize(playerPrefs.captionSize.fraction, false)
-        }
+        playerView.subtitleView?.let { configureSubtitleView(it) }
     }
 
     fun applyCaptionSize(size: CaptionSize) {
         playerPrefs.captionSize = size
+        attachedPlayerView.get()?.subtitleView?.setFractionalTextSize(size.fraction, false)
+    }
+
+    private fun configureSubtitleView(subtitleView: com.google.android.exoplayer2.ui.SubtitleView) {
+        subtitleView.setApplyEmbeddedStyles(false)
+        subtitleView.setBottomPaddingFraction(0.1f)
+        val padPx = (16f * appContext.resources.displayMetrics.density).toInt()
+        subtitleView.setPadding(padPx, 0, padPx, 0)
+        subtitleView.setFractionalTextSize(playerPrefs.captionSize.fraction, false)
     }
 
     fun getCaptionSize(): CaptionSize = playerPrefs.captionSize
@@ -97,7 +124,8 @@ class PhonePlayerController(
         isLive: Boolean = false,
         streamUrl: String? = null,
         audioStreamUrl: String? = null,
-        subtitle: SubtitleOption? = selectedSubtitle
+        subtitle: SubtitleOption? = selectedSubtitle,
+        percentWatched: Int = -1
     ) {
         currentVideoId = videoId
         this.isLive = isLive
@@ -113,7 +141,7 @@ class PhonePlayerController(
         }
         scope.launch {
             try {
-                prepareAndPlay(videoId, isLive, keepPositionMs = 0L)
+                prepareAndPlay(videoId, isLive, keepPositionMs = -1L, percentWatched = percentWatched)
             } catch (e: Exception) {
                 onError?.invoke(e)
             }
@@ -128,10 +156,10 @@ class PhonePlayerController(
     ) {
         selectedStreamUrl = streamUrl
         selectedAudioStreamUrl = audioStreamUrl
-        val position = player.currentPosition
+        val keepMs = if (isLive) -1L else player.currentPosition
         scope.launch {
             try {
-                prepareAndPlay(videoId, isLive, keepPositionMs = position)
+                prepareAndPlay(videoId, isLive, keepPositionMs = keepMs)
             } catch (e: Exception) {
                 onError?.invoke(e)
             }
@@ -153,14 +181,20 @@ class PhonePlayerController(
         selectedSubtitle = subtitle
         playerPrefs.preferredSubtitleId = subtitle?.id
         val videoId = currentVideoId ?: return
-        val position = player.currentPosition
+        val keepMs = if (isLive) -1L else player.currentPosition
         scope.launch {
             try {
-                prepareAndPlay(videoId, isLive, keepPositionMs = position)
+                prepareAndPlay(videoId, isLive, keepPositionMs = keepMs)
             } catch (e: Exception) {
                 onError?.invoke(e)
             }
         }
+    }
+
+    /** Al volver a la pantalla del reproductor con el mismo directo ya cargado. */
+    fun alignLivePlaybackToEdge() {
+        if (!isLive) return
+        seekToLiveEdge()
     }
 
     fun resolvePreferredSubtitle(options: List<SubtitleOption>): SubtitleOption? {
@@ -169,15 +203,37 @@ class PhonePlayerController(
         return options.firstOrNull { it.id == preferredId } ?: options.first()
     }
 
-    private suspend fun prepareAndPlay(videoId: String, isLive: Boolean, keepPositionMs: Long) {
+    fun applyPreferredAudioLanguage(languageCode: String?) {
+        val normalized = languageCode?.let { Util.normalizeLanguageCode(it) }
+        trackSelector.parameters = trackSelector.parameters.buildUpon()
+            .setPreferredAudioLanguage(normalized)
+            .build()
+    }
+
+    fun setAudioLanguage(languageCode: String) {
+        playerPrefs.audioLanguageMode = AudioLanguageMode.MANUAL
+        playerPrefs.audioLanguageCode = languageCode
+        applyPreferredAudioLanguage(languageCode)
+    }
+
+    private suspend fun prepareAndPlay(
+        videoId: String,
+        isLive: Boolean,
+        keepPositionMs: Long,
+        percentWatched: Int = -1
+    ) {
         val formatInfo = loadFormatInfo(videoId)
-        val effectiveLive = isLive || formatInfo.isLive || formatInfo.isLiveContent
-        this.isLive = effectiveLive
+        if (PlaybackRestrictions.blocksPlayback(formatInfo)) {
+            onError?.invoke(IllegalStateException(PlaybackRestrictions.LIVE_UNAVAILABLE))
+            return
+        }
+        this.isLive = false
+        applyPreferredAudioLanguage(playerPrefs.resolvePreferredAudioLanguage())
+        mediaSourceFactory.setPlaybackFormatInfo(formatInfo)
+        val durationMs = formatLengthMs(formatInfo.lengthSeconds)
         val url = selectedStreamUrl
         val audioUrl = selectedAudioStreamUrl
-        val videoSource = if (effectiveLive) {
-            mediaSourceFactory.fromFormatInfo(formatInfo)
-        } else if (!url.isNullOrBlank()) {
+        val videoSource = if (!url.isNullOrBlank()) {
             mediaSourceFactory.fromStreamUrls(url, audioUrl)
                 ?: mediaSourceFactory.fromFormatInfo(formatInfo)
         } else {
@@ -191,10 +247,28 @@ class PhonePlayerController(
         player.prepare(source)
         player.playbackParameters = PlaybackParameters(playbackSpeed)
         player.playWhenReady = true
-        if (keepPositionMs > 0 && !effectiveLive) {
-            player.seekTo(keepPositionMs)
+        val startMs = when {
+            keepPositionMs >= 0L -> keepPositionMs
+            else -> positionStore.resolveStartMs(videoId, durationMs, percentWatched)
         }
-        startSponsorBlock(videoId, effectiveLive)
+        if (startMs > 0L) {
+            player.seekTo(startMs)
+        }
+        startSponsorBlock(videoId, isLive = false)
+    }
+
+    private fun seekToLiveEdge() {
+        if (!isLive) return
+        val duration = player.duration
+        when {
+            duration > 0 && duration != C.TIME_UNSET -> player.seekTo(duration)
+            else -> player.seekToDefaultPosition()
+        }
+    }
+
+    private fun formatLengthMs(lengthSeconds: String?): Long {
+        val seconds = lengthSeconds?.trim()?.toLongOrNull() ?: return 0L
+        return seconds.coerceAtLeast(0L) * 1_000L
     }
 
     private suspend fun loadFormatInfo(videoId: String): MediaItemFormatInfo {
@@ -246,9 +320,12 @@ class PhonePlayerController(
     fun isPlaying(): Boolean = player.isPlaying
 
     fun seekBy(deltaMs: Long) {
-        if (isLive) return
         val duration = player.duration
-        val maxPosition = if (duration > 0) duration else Long.MAX_VALUE
+        val maxPosition = when {
+            isLive && duration > 0 && duration != C.TIME_UNSET -> duration
+            !isLive && duration > 0 -> duration
+            else -> if (isLive) return else Long.MAX_VALUE
+        }
         val target = (player.currentPosition + deltaMs).coerceIn(0L, maxPosition)
         player.seekTo(target)
     }
@@ -259,6 +336,10 @@ class PhonePlayerController(
 
     fun seekBackward(seconds: Int = 10) {
         seekBy(-seconds * 1_000L)
+    }
+
+    fun setLooping(enabled: Boolean) {
+        player.repeatMode = if (enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
     fun togglePlayPause() {

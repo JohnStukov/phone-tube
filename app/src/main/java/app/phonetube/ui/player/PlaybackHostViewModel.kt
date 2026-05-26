@@ -70,6 +70,19 @@ class PlaybackHostViewModel(application: Application) : AndroidViewModel(applica
         )
     }
 
+    /** Al salir de la pantalla del reproductor sin detener la reproducción. */
+    fun minimizeIfLeavingPlayerScreen() {
+        val current = _session.value ?: return
+        if (current.mode != PlayerDisplayMode.FULL) return
+        if (!canMinimize(getOrCreateController())) return
+        minimize(
+            videoId = current.videoId,
+            isLive = current.isLive,
+            title = current.title,
+            author = current.author
+        )
+    }
+
     fun setFullMode() {
         _session.update { current ->
             current?.copy(mode = PlayerDisplayMode.FULL) ?: current

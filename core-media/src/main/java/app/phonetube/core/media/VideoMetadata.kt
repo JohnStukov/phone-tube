@@ -14,8 +14,10 @@ data class VideoMetadata(
     val commentsKey: String? = null,
     val isSubscribed: Boolean = false,
     val isLive: Boolean = false,
+    val isLiveContent: Boolean = false,
     val likeStatus: Int = LIKE_STATUS_NONE,
-    val relatedVideos: List<VideoItem> = emptyList()
+    val relatedVideos: List<VideoItem> = emptyList(),
+    val percentWatched: Int = -1
 ) {
     companion object {
         const val LIKE_STATUS_NONE = 0

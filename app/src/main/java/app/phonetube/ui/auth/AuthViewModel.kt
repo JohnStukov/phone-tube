@@ -7,9 +7,11 @@ import app.phonetube.core.media.AuthRepository
 import app.phonetube.core.media.AuthState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SignInUiState(
     val isLoading: Boolean = false,
@@ -36,10 +38,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 authRepository.signIn { code, url ->
                     _signInState.value = _signInState.value.copy(
                         userCode = code,
-                        verificationUrl = url
+                        verificationUrl = url,
+                        isLoading = true
                     )
                 }
-                _signInState.value = SignInUiState(completed = true)
+                withContext(Dispatchers.Main.immediate) {
+                    _signInState.value = SignInUiState(completed = true)
+                }
             } catch (e: Exception) {
                 _signInState.value = SignInUiState(
                     error = e.message ?: e.javaClass.simpleName

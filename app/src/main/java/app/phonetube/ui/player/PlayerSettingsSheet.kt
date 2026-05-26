@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.phonetube.R
+import app.phonetube.core.media.AudioTrackOption
 import app.phonetube.core.media.SubtitleOption
 import app.phonetube.core.media.SubtitleOptionsHelper
 import app.phonetube.core.media.StreamQualityOption
@@ -37,7 +38,7 @@ import app.phonetube.core.playback.CaptionSize
 import app.phonetube.core.playback.PlaybackSpeedHelper
 
 private enum class SettingsPage {
-    Main, Quality, Subtitles, Speed, CaptionSize
+    Main, Quality, Audio, Subtitles, Speed, CaptionSize
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,12 +46,15 @@ private enum class SettingsPage {
 fun PlayerSettingsSheet(
     qualityOptions: List<StreamQualityOption>,
     selectedQualityLabel: String,
+    audioTrackOptions: List<AudioTrackOption>,
+    selectedAudioTrackId: String?,
     subtitleOptions: List<SubtitleOption>,
     selectedSubtitleId: String,
     playbackSpeed: Float,
     captionSize: CaptionSize,
     autoplayEnabled: Boolean,
     onQualitySelected: (StreamQualityOption) -> Unit,
+    onAudioTrackSelected: (AudioTrackOption) -> Unit,
     onSubtitleSelected: (SubtitleOption) -> Unit,
     onSpeedSelected: (Float) -> Unit,
     onCaptionSizeSelected: (CaptionSize) -> Unit,
@@ -62,16 +66,22 @@ fun PlayerSettingsSheet(
         .firstOrNull { it.id == selectedSubtitleId }
         ?.let { localizeSubtitleLabel(it) }
         ?: stringResource(R.string.subtitles_off)
+    val selectedAudioLabel = audioTrackOptions
+        .firstOrNull { it.id == selectedAudioTrackId }
+        ?.label
+        ?: stringResource(R.string.audio_track_auto)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         when (page) {
             SettingsPage.Main -> SettingsMainPage(
                 selectedQualityLabel = selectedQualityLabel,
+                selectedAudioLabel = selectedAudioLabel,
                 selectedSubtitleLabel = selectedSubtitleLabel,
                 playbackSpeedLabel = PlaybackSpeedHelper.formatSpeedLabel(playbackSpeed),
                 captionSizeLabel = captionSizeLabel(captionSize),
                 autoplayEnabled = autoplayEnabled,
                 hasQuality = qualityOptions.size > 1,
+                hasAudioTracks = audioTrackOptions.size > 1,
                 hasSubtitles = subtitleOptions.size > 1,
                 onNavigate = { page = it },
                 onAutoplayChanged = onAutoplayChanged
@@ -89,6 +99,30 @@ fun PlayerSettingsSheet(
                             page = SettingsPage.Main
                         }
                     )
+                }
+            }
+            SettingsPage.Audio -> SettingsSubPage(
+                title = stringResource(R.string.audio_track),
+                onBack = { page = SettingsPage.Main }
+            ) {
+                if (audioTrackOptions.size <= 1) {
+                    Text(
+                        text = stringResource(R.string.audio_track_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                    )
+                } else {
+                    audioTrackOptions.forEach { option ->
+                        SettingsRow(
+                            label = option.label,
+                            selected = option.id == selectedAudioTrackId,
+                            onClick = {
+                                onAudioTrackSelected(option)
+                                page = SettingsPage.Main
+                            }
+                        )
+                    }
                 }
             }
             SettingsPage.Subtitles -> SettingsSubPage(
@@ -152,11 +186,13 @@ fun PlayerSettingsSheet(
 @Composable
 private fun SettingsMainPage(
     selectedQualityLabel: String,
+    selectedAudioLabel: String,
     selectedSubtitleLabel: String,
     playbackSpeedLabel: String,
     captionSizeLabel: String,
     autoplayEnabled: Boolean,
     hasQuality: Boolean,
+    hasAudioTracks: Boolean,
     hasSubtitles: Boolean,
     onNavigate: (SettingsPage) -> Unit,
     onAutoplayChanged: (Boolean) -> Unit
@@ -176,6 +212,13 @@ private fun SettingsMainPage(
                 title = stringResource(R.string.quality),
                 value = selectedQualityLabel,
                 onClick = { onNavigate(SettingsPage.Quality) }
+            )
+        }
+        if (hasAudioTracks) {
+            SettingsNavRow(
+                title = stringResource(R.string.audio_track),
+                value = selectedAudioLabel,
+                onClick = { onNavigate(SettingsPage.Audio) }
             )
         }
         if (hasSubtitles) {

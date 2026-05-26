@@ -10,5 +10,9 @@ data class VideoItem(
     val subtitle: String? = null,
     val durationLabel: String? = null,
     val channelId: String? = null,
-    val channelAvatarUrl: String? = null
-)
+    val channelAvatarUrl: String? = null,
+    /** 0–100 desde YouTube si hay sesión; -1 si no aplica. */
+    val percentWatched: Int = -1
+) {
+    val hasWatchProgress: Boolean get() = percentWatched in 1..99
+}

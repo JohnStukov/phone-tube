@@ -12,23 +12,34 @@ import androidx.compose.material3.Scaffold
 
 import androidx.compose.runtime.Composable
 
+import androidx.compose.runtime.LaunchedEffect
+
 import androidx.compose.runtime.collectAsState
 
 import androidx.compose.runtime.getValue
 
+import androidx.compose.runtime.mutableStateOf
+
+import androidx.compose.runtime.saveable.rememberSaveable
+
+import androidx.compose.runtime.setValue
+
 import androidx.compose.ui.Modifier
 
 import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 
 import androidx.navigation.NavType
 
 import androidx.navigation.compose.NavHost
 
 import androidx.navigation.compose.composable
+
+import androidx.navigation.compose.navigation
 
 import androidx.navigation.compose.currentBackStackEntryAsState
 
@@ -53,6 +64,7 @@ import app.phonetube.util.MediaCastHelper
 
 import app.phonetube.ui.auth.SignInScreen
 
+import app.phonetube.ui.components.KeepScreenOnEffect
 import app.phonetube.ui.components.YouTubeBottomBar
 
 import app.phonetube.ui.home.HomeScreen
@@ -94,13 +106,24 @@ fun PhoneTubeNavHost(
 
     val currentRoute = navBackStackEntry?.destination?.route
 
-    val showBottomBar = currentRoute in Routes.bottomNavRoutes
+    val showBottomBar = Routes.showsBottomBar(currentRoute)
 
-    val selectedTab = BottomTab.fromRoute(currentRoute) ?: BottomTab.HOME
+    var lastBottomTab by rememberSaveable { mutableStateOf(BottomTab.HOME) }
+    LaunchedEffect(currentRoute) {
+        BottomTab.fromRoute(currentRoute)?.let { lastBottomTab = it }
+    }
+    val selectedTab = BottomTab.fromRoute(currentRoute) ?: lastBottomTab
 
     val playbackSession by playbackHost.session.collectAsState()
-
     val isOnPlayerRoute = currentRoute?.startsWith("player/") == true
+
+    LaunchedEffect(currentRoute, playbackSession?.videoId, playbackSession?.mode) {
+        if (!isOnPlayerRoute) {
+            playbackHost.minimizeIfLeavingPlayerScreen()
+        }
+    }
+
+    KeepScreenOnEffect(enabled = playbackSession != null || isOnPlayerRoute)
 
 
 
@@ -111,21 +134,7 @@ fun PhoneTubeNavHost(
     }
 
     val openAccount: () -> Unit = {
-
-        navController.navigate(Routes.LIBRARY) {
-
-            popUpTo(navController.graph.findStartDestination().id) {
-
-                saveState = true
-
-            }
-
-            launchSingleTop = true
-
-            restoreState = true
-
-        }
-
+        navController.navigateBottomTab(BottomTab.LIBRARY)
     }
 
 
@@ -140,12 +149,23 @@ fun PhoneTubeNavHost(
 
     )
 
-
+    val liveUnavailableMessage = context.getString(R.string.playback_live_unavailable)
+    val openPlayer: (String, Boolean) -> Unit = { videoId, isLive ->
+        if (isLive) {
+            Toast.makeText(context, liveUnavailableMessage, Toast.LENGTH_SHORT).show()
+        } else {
+            navController.navigate(Routes.player(videoId, false))
+        }
+    }
 
     val expandMiniPlayer: () -> Unit = {
         playbackSession?.let { session ->
+            if (session.isLive) {
+                Toast.makeText(context, liveUnavailableMessage, Toast.LENGTH_SHORT).show()
+                return@let
+            }
             playbackHost.setFullMode()
-            navController.navigate(Routes.player(session.videoId, session.isLive)) {
+            navController.navigate(Routes.player(session.videoId, false)) {
                 launchSingleTop = true
             }
         }
@@ -168,21 +188,7 @@ fun PhoneTubeNavHost(
                         selectedTab = selectedTab,
 
                         onTabSelected = { tab ->
-
-                            navController.navigate(tab.route) {
-
-                                popUpTo(navController.graph.findStartDestination().id) {
-
-                                    saveState = true
-
-                                }
-
-                                launchSingleTop = true
-
-                                restoreState = true
-
-                            }
-
+                            navController.navigateBottomTab(tab)
                         }
 
                     )
@@ -197,7 +203,7 @@ fun PhoneTubeNavHost(
 
                 navController = navController,
 
-                startDestination = Routes.HOME,
+                startDestination = Routes.BOTTOM_NAV,
 
                 modifier = Modifier
 
@@ -207,75 +213,71 @@ fun PhoneTubeNavHost(
 
             ) {
 
-                composable(Routes.HOME) {
+                navigation(
+                    route = Routes.BOTTOM_NAV,
+                    startDestination = Routes.HOME
+                ) {
+                    composable(Routes.HOME) {
+                        HomeScreen(
+                            onVideoClick = openPlayer,
+                            onOpenAccount = openAccount,
+                            topBarActions = topBarActions
+                        )
+                    }
 
-                    HomeScreen(
-
-                        onVideoClick = { videoId, isLive ->
-
-                            navController.navigate(Routes.player(videoId, isLive))
-
-                        },
-
-                        onOpenAccount = openAccount,
-
-                        topBarActions = topBarActions
-
-                    )
-
-                }
-
-                composable(Routes.SHORTS) {
-
-                    ShortsScreen(
-                        onChannelClick = { channelId, channelName ->
-                            navController.navigate(Routes.channel(channelId, channelName)) {
-                                launchSingleTop = true
+                    composable(Routes.SHORTS) {
+                        ShortsScreen(
+                            onChannelClick = { channelId, channelName ->
+                                navController.navigate(Routes.channel(channelId, channelName)) {
+                                    launchSingleTop = true
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
 
+                    composable(Routes.SUBSCRIPTIONS) {
+                        SubscriptionsScreen(
+                            onVideoClick = openPlayer,
+                            onSignIn = openSignIn,
+                            onOpenAccount = openAccount,
+                            topBarActions = topBarActions
+                        )
+                    }
+
+                    composable(Routes.LIBRARY) {
+                        LibraryScreen(
+                            onVideoClick = openPlayer,
+                            onSignIn = openSignIn,
+                            onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                            topBarActions = topBarActions
+                        )
+                    }
                 }
 
                 composable(
                     route = Routes.CHANNEL,
                     arguments = listOf(
-                        navArgument("channelId") { type = NavType.StringType }
+                        navArgument("channelId") { type = NavType.StringType },
+                        navArgument("channelName") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
                     )
                 ) { entry ->
                     val channelId = ChannelRoute.decodeChannelId(
                         entry.arguments?.getString("channelId")
                     )
-                    val channelName: String? = null
+                    val channelName = ChannelRoute.decodeChannelName(
+                        entry.arguments?.getString("channelName")
+                    )
                     ChannelScreen(
                         channelId = channelId,
                         channelName = channelName,
                         onBack = { navController.popBackStack() },
-                        onVideoClick = { videoId, isLive ->
-                            navController.navigate(Routes.player(videoId, isLive))
-                        },
+                        onVideoClick = openPlayer,
                         onSignIn = openSignIn
                     )
-                }
-
-                composable(Routes.SUBSCRIPTIONS) {
-
-                    SubscriptionsScreen(
-
-                        onVideoClick = { videoId, isLive ->
-
-                            navController.navigate(Routes.player(videoId, isLive))
-
-                        },
-
-                        onSignIn = openSignIn,
-
-                        onOpenAccount = openAccount,
-
-                        topBarActions = topBarActions
-
-                    )
-
                 }
 
                 composable(Routes.SEARCH) {
@@ -284,11 +286,7 @@ fun PhoneTubeNavHost(
 
                         onBack = { navController.popBackStack() },
 
-                        onVideoClick = { videoId, isLive ->
-
-                            navController.navigate(Routes.player(videoId, isLive))
-
-                        }
+                        onVideoClick = openPlayer
 
                     )
 
@@ -300,33 +298,9 @@ fun PhoneTubeNavHost(
 
                         onBack = { navController.popBackStack() },
 
-                        onVideoClick = { videoId, isLive ->
-
-                            navController.navigate(Routes.player(videoId, isLive))
-
-                        },
+                        onVideoClick = openPlayer,
 
                         onSignIn = openSignIn
-
-                    )
-
-                }
-
-                composable(Routes.LIBRARY) {
-
-                    LibraryScreen(
-
-                        onVideoClick = { videoId, isLive ->
-
-                            navController.navigate(Routes.player(videoId, isLive))
-
-                        },
-
-                        onSignIn = openSignIn,
-
-                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-
-                        topBarActions = topBarActions
 
                     )
 
@@ -339,21 +313,14 @@ fun PhoneTubeNavHost(
                         onBack = { navController.popBackStack() },
 
                         onSignedIn = {
-
-                            navController.popBackStack()
-
                             navController.navigate(Routes.SUBSCRIPTIONS) {
-
-                                popUpTo(navController.graph.findStartDestination().id) {
-
+                                popUpTo(Routes.SIGN_IN) { inclusive = true }
+                                popUpTo(Routes.BOTTOM_NAV) {
                                     saveState = true
-
                                 }
-
                                 launchSingleTop = true
-
+                                restoreState = true
                             }
-
                         }
 
                     )
@@ -388,11 +355,7 @@ fun PhoneTubeNavHost(
 
                         onBack = { navController.popBackStack() },
 
-                        onRelatedVideoClick = { id, live ->
-
-                            navController.navigate(Routes.player(id, live))
-
-                        },
+                        onRelatedVideoClick = openPlayer,
 
                         onChannelClick = { channelId, channelName ->
                             navController.navigate(Routes.channel(channelId, channelName)) {
@@ -448,5 +411,16 @@ fun PhoneTubeNavHost(
 
     }
 
+}
+
+private fun NavHostController.navigateBottomTab(tab: BottomTab) {
+    if (currentDestination?.route == tab.route) return
+    navigate(tab.route) {
+        popUpTo(Routes.BOTTOM_NAV) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 

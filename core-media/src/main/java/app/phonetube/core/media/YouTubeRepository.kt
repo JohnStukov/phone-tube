@@ -35,6 +35,9 @@ class YouTubeRepository(context: Context) {
     private val notificationsService: NotificationsService
         get() = YouTubeServiceManager.instance().notificationsService
 
+    private val channelPageLoader = ChannelPageLoader()
+    private var channelStructureId: String? = null
+
     suspend fun searchVideos(query: String): List<VideoItem> = withContext(Dispatchers.IO) {
         PhoneTubeMediaInit.init(appContext)
         val groups = contentService.getSearchObserve(query).blockingFirst()
@@ -116,9 +119,17 @@ class YouTubeRepository(context: Context) {
         mediaItemService.getFormatInfoObserve(videoId).blockingFirst()
     }
 
-    suspend fun getQualityOptions(videoId: String): List<StreamQualityOption> = withContext(Dispatchers.IO) {
+    suspend fun getQualityOptions(
+        videoId: String,
+        preferredAudioLanguage: String? = null
+    ): List<StreamQualityOption> = withContext(Dispatchers.IO) {
         val formatInfo = getFormatInfo(videoId)
-        QualityOptionsHelper.qualityOptions(formatInfo)
+        QualityOptionsHelper.qualityOptions(formatInfo, preferredAudioLanguage)
+    }
+
+    suspend fun getAudioTrackOptions(videoId: String): List<AudioTrackOption> = withContext(Dispatchers.IO) {
+        val formatInfo = getFormatInfo(videoId)
+        AudioLanguageOptionsHelper.audioTrackOptions(formatInfo)
     }
 
     suspend fun getSubtitleOptions(videoId: String): List<SubtitleOption> = withContext(Dispatchers.IO) {
@@ -144,10 +155,10 @@ class YouTubeRepository(context: Context) {
         return try {
             val format = getFormatInfo(videoId)
             val channelId = existing ?: format.channelId?.trim()?.takeIf { it.isNotEmpty() }
-            val isLive = metadata.isLive || format.isLive || format.isLiveContent
             metadata.copy(
                 channelId = channelId,
-                isLive = isLive
+                isLive = metadata.isLive || format.isLive,
+                isLiveContent = format.isLiveContent
             )
         } catch (_: Exception) {
             if (existing != null) metadata.copy(channelId = existing) else metadata
@@ -155,28 +166,48 @@ class YouTubeRepository(context: Context) {
     }
 
     suspend fun loadChannel(channelId: String, fallbackName: String? = null): ChannelDetails =
-        withContext(Dispatchers.IO) {
-            PhoneTubeMediaInit.init(appContext)
-            val canonicalId = channelId.trim()
-            val groups = loadChannelGroups(canonicalId)
-            val videos = flattenGroups(groups)
-            val headerItem = groups.firstOrNull()?.mediaItems?.firstOrNull()
-            val name = fallbackName?.takeIf { it.isNotBlank() }
-                ?: headerItem?.author?.takeIf { it.isNotBlank() }
-                ?: groups.firstOrNull()?.title?.takeIf { it.isNotBlank() }
-                ?: canonicalId
-            ChannelDetails(
-                channelId = canonicalId,
-                name = name,
-                avatarUrl = ImageUrlHelper.normalize(
-                    headerItem?.cardImageUrl ?: headerItem?.backgroundImageUrl
-                ),
-                subscriberCount = headerItem?.secondTitle?.toString(),
-                description = null,
-                videos = videos,
-                isSubscribed = resolveIsSubscribed(canonicalId)
-            )
+        loadChannel(channelId, fallbackName, tabId = null, sortId = null)
+
+    suspend fun loadChannel(
+        channelId: String,
+        fallbackName: String? = null,
+        tabId: String?,
+        sortId: String?
+    ): ChannelDetails = withContext(Dispatchers.IO) {
+        PhoneTubeMediaInit.init(appContext)
+        val canonicalId = channelId.trim()
+        if (channelStructureId != canonicalId) {
+            channelPageLoader.ensureStructure(canonicalId)
+            channelStructureId = canonicalId
         }
+        val header = channelPageLoader.loadHeader(canonicalId)
+        val tabs = channelPageLoader.tabs()
+        val sortOptions = channelPageLoader.sortOptions()
+        val selectedTab = tabId?.takeIf { id -> tabs.any { it.id == id } }
+            ?: ChannelTabIds.VIDEOS
+        val selectedSort = sortId?.takeIf { id -> sortOptions.any { it.id == id } }
+            ?: sortOptions.firstOrNull()?.id
+        val videos = channelPageLoader.loadVideos(canonicalId, selectedTab, selectedSort)
+        val name = fallbackName?.takeIf { it.isNotBlank() }
+            ?: header?.title?.takeIf { it.isNotBlank() }
+            ?: canonicalId
+        ChannelDetails(
+            channelId = canonicalId,
+            name = name,
+            avatarUrl = ImageUrlHelper.normalize(header?.avatarUrl),
+            bannerUrl = ImageUrlHelper.normalize(header?.bannerUrl),
+            handle = header?.handle,
+            subscriberCount = header?.subscriberCount,
+            videoCount = videos.size,
+            description = header?.description,
+            videos = videos,
+            tabs = if (tabs.isNotEmpty()) tabs else listOf(ChannelTab(ChannelTabIds.VIDEOS, ChannelTabIds.VIDEOS)),
+            sortOptions = sortOptions,
+            selectedTabId = selectedTab,
+            selectedSortId = selectedSort,
+            isSubscribed = resolveIsSubscribed(canonicalId)
+        )
+    }
 
     suspend fun setLike(videoId: String) = withContext(Dispatchers.IO) {
         requireSignedIn()
@@ -232,27 +263,16 @@ class YouTubeRepository(context: Context) {
             .orEmpty()
     }
 
-    suspend fun canPostComment(commentsKey: String): Boolean = withContext(Dispatchers.IO) {
-        if (commentsKey.isBlank() || !AuthRepository.get(appContext).isSignedIn()) return@withContext false
-        PhoneTubeMediaInit.init(appContext)
-        val group = commentsService.getCommentsObserve(commentsKey).blockingFirst() ?: return@withContext false
-        !group.createCommentParams.isNullOrBlank()
-    }
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun canPostComment(commentsKey: String): Boolean = false
 
-    suspend fun postComment(commentsKey: String, text: String) = withContext(Dispatchers.IO) {
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun postComment(commentsKey: String, text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) {
             throw CommentPostException("comment_empty")
         }
-        requireSignedIn()
-        PhoneTubeMediaInit.init(appContext)
-        val group = commentsService.getCommentsObserve(commentsKey).blockingFirst()
-            ?: throw CommentPostException("comments_not_ready")
-        val params = group.createCommentParams
-        if (params.isNullOrBlank()) {
-            throw CommentPostException("comments_post_unavailable")
-        }
-        commentsService.createCommentObserve(params, trimmed).blockingFirst()
+        throw CommentPostException("comments_post_unavailable")
     }
 
     private fun mapMetadata(meta: MediaItemMetadata, videoId: String): VideoMetadata {
@@ -272,7 +292,8 @@ class YouTubeRepository(context: Context) {
             isSubscribed = resolveIsSubscribed(meta.channelId),
             isLive = meta.isLive,
             likeStatus = meta.likeStatus,
-            relatedVideos = related
+            relatedVideos = related,
+            percentWatched = meta.percentWatched
         )
     }
 

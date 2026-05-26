@@ -1,10 +1,11 @@
 package app.phonetube.core.media
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.liskovsoft.mediaserviceinterfaces.oauth.Account
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager
 import com.liskovsoft.youtubeapi.service.YouTubeSignInService
-import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ data class AuthState(
 class AuthRepository private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val signInService: YouTubeSignInService = YouTubeSignInService.instance()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
@@ -37,7 +39,6 @@ class AuthRepository private constructor(context: Context) {
     init {
         PhoneTubeMediaInit.init(appContext)
         signInService.addOnAccountChange(accountListener)
-        signInService.checkAuth()
         refreshState()
     }
 
@@ -50,11 +51,13 @@ class AuthRepository private constructor(context: Context) {
             PhoneTubeMediaInit.init(appContext)
             suspendCancellableCoroutine { cont ->
                 val disposable: Disposable = signInService.signInObserve()
-                    .subscribeOn(Schedulers.io())
-                    .observeOn(AndroidSchedulers.mainThread())
+                    // signInObserve() ends on mainThread; checkAuth() does sync HTTP and crashes on release.
+                    .observeOn(Schedulers.io())
                     .subscribe(
                         { code ->
-                            onUserCode(code, DEFAULT_VERIFICATION_URL)
+                            mainHandler.post {
+                                onUserCode(code, DEFAULT_VERIFICATION_URL)
+                            }
                         },
                         { error ->
                             if (cont.isActive) {
@@ -62,10 +65,7 @@ class AuthRepository private constructor(context: Context) {
                             }
                         },
                         {
-                            signInService.invalidateCache()
-                            signInService.checkAuth()
                             refreshState()
-                            YouTubeServiceManager.instance().refreshCacheIfNeeded()
                             if (cont.isActive) {
                                 cont.resume(Unit)
                             }

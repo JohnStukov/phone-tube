@@ -1,5 +1,7 @@
 # PhoneTube
 
+**Versión 1.0.1**
+
 Cliente Android de YouTube orientado a móvil, escrito en **Kotlin** y **Jetpack Compose**. Reproduce contenido con **ExoPlayer**, consume la API vía **MediaServiceCore** (ecosistema SmartTube) e incluye **SponsorBlock** configurable.
 
 > Proyecto en desarrollo activo. Algunas pestañas (Shorts, biblioteca completa, subir video) son placeholders.
@@ -99,6 +101,26 @@ git submodule update --init --recursive
    ```
 
    Coloca tu `.jks` en la raíz y completa contraseñas y alias. **No subas** `keystore.properties` ni `*.jks` a GitHub.
+
+### Antes de subir a GitHub
+
+El `.gitignore` ya excluye SDK local, keystores, builds, `.idea/`, `.cursor/`, `.codegraph/` y APK/AAB. Antes de cada commit o push:
+
+```powershell
+git status
+git diff --stat
+git check-ignore -v local.properties
+```
+
+**No hagas** `git add -f` sobre `local.properties`, `keystore.properties`, `*.jks`, `.env`, carpetas `build/` o `.gradle/`.
+
+Si algo sensible se coló al índice por error (sin haber hecho push aún):
+
+```powershell
+git rm --cached local.properties
+```
+
+Si ya llegó a GitHub, hay que rotar contraseñas del keystore y limpiar el historial (`git filter-repo` o soporte de GitHub); no basta con borrarlo en un commit nuevo.
 
 ---
 

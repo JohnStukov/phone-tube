@@ -2,7 +2,10 @@ package app.phonetube.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -36,8 +39,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,13 +59,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.phonetube.R
 import app.phonetube.core.playback.PhonePlayerController
+import app.phonetube.core.playback.SeekSegment
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
 import com.google.android.exoplayer2.ui.PlayerView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -73,20 +74,21 @@ import kotlinx.coroutines.launch
 private const val SEEK_SECONDS = 10
 private const val CONTROLS_HIDE_MS = 3_000L
 private const val SINGLE_TAP_DELAY_MS = 300L
-private val YouTubeProgressRed = Color(0xFFFF0000)
-
 private enum class SeekRippleSide { LEFT, RIGHT }
 
 @Composable
 fun VideoPlayerSurface(
     controller: PhonePlayerController,
     isLive: Boolean,
+    isFullscreen: Boolean,
+    onFullscreenChange: (Boolean) -> Unit,
+    sponsorSegments: List<SeekSegment> = emptyList(),
+    settingsOpen: Boolean = false,
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var isFullscreen by remember { mutableStateOf(false) }
     var seekHint by remember { mutableStateOf<String?>(null) }
     var seekRippleSide by remember { mutableStateOf<SeekRippleSide?>(null) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -120,7 +122,7 @@ fun VideoPlayerSurface(
     }
 
     fun seekForward() {
-        if (isLive) return
+        if (isLive && durationMs <= 0) return
         controller.seekForward(SEEK_SECONDS)
         showSeekHint(
             context.getString(R.string.seek_forward, SEEK_SECONDS),
@@ -129,7 +131,7 @@ fun VideoPlayerSurface(
     }
 
     fun seekBackward() {
-        if (isLive) return
+        if (isLive && durationMs <= 0) return
         controller.seekBackward(SEEK_SECONDS)
         showSeekHint(
             context.getString(R.string.seek_backward, SEEK_SECONDS),
@@ -149,7 +151,17 @@ fun VideoPlayerSurface(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, isScrubbing) {
+    LaunchedEffect(isFullscreen) {
+        if (isFullscreen) {
+            controlsVisible = true
+        }
+    }
+
+    LaunchedEffect(controlsVisible, isPlaying, isScrubbing, settingsOpen) {
+        if (settingsOpen) {
+            controlsVisible = true
+            return@LaunchedEffect
+        }
         if (controlsVisible && isPlaying && !isScrubbing) {
             delay(CONTROLS_HIDE_MS)
             controlsVisible = false
@@ -174,12 +186,14 @@ fun VideoPlayerSurface(
                         useController = false
                         isClickable = false
                         isFocusable = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         controller.attachPlayerView(this)
                     }
                 },
                 update = { view ->
                     view.isClickable = false
                     view.isFocusable = false
+                    view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     if (view.player !== controller.getPlayer()) {
                         controller.attachPlayerView(view)
                     }
@@ -195,7 +209,7 @@ fun VideoPlayerSurface(
                             onDoubleTap = { offset ->
                                 pendingSingleTapJob?.cancel()
                                 pendingSingleTapJob = null
-                                if (isLive) return@detectTapGestures
+                                if (isLive && durationMs <= 0) return@detectTapGestures
                                 val width = size.width.toFloat()
                                 when {
                                     offset.x < width * 0.4f -> seekBackward()
@@ -260,6 +274,7 @@ fun VideoPlayerSurface(
                         IconButton(
                             onClick = {
                                 pendingSingleTapJob?.cancel()
+                                showControls()
                                 onSettingsClick()
                             }
                         ) {
@@ -309,13 +324,28 @@ fun VideoPlayerSurface(
                                 .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (!isLive && durationMs > 0) {
-                                Text(
-                                    text = "${formatPlayerTime(displayPositionMs)} / ${formatPlayerTime(durationMs)}",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
+                            if (durationMs > 0) {
+                                if (isLive) {
+                                    Text(
+                                        text = stringResource(R.string.live_badge),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                    Text(
+                                        text = formatPlayerTime(displayPositionMs),
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${formatPlayerTime(displayPositionMs)} / ${formatPlayerTime(durationMs)}",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
                             } else if (isLive) {
                                 Text(
                                     text = stringResource(R.string.live_badge),
@@ -327,7 +357,7 @@ fun VideoPlayerSurface(
                             IconButton(
                                 onClick = {
                                     pendingSingleTapJob?.cancel()
-                                    isFullscreen = !isFullscreen
+                                    onFullscreenChange(!isFullscreen)
                                 }
                             ) {
                                 Icon(
@@ -344,9 +374,11 @@ fun VideoPlayerSurface(
                             }
                         }
 
-                        if (!isLive && durationMs > 0) {
-                            Slider(
+                        if (durationMs > 0) {
+                            SponsorBlockProgressSlider(
                                 value = sliderValue,
+                                durationMs = durationMs,
+                                sponsorSegments = if (isLive) emptyList() else sponsorSegments,
                                 onValueChange = { value ->
                                     pendingSingleTapJob?.cancel()
                                     isScrubbing = true
@@ -357,16 +389,10 @@ fun VideoPlayerSurface(
                                     controller.seekTo(scrubPositionMs)
                                     positionMs = scrubPositionMs
                                     isScrubbing = false
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(20.dp)
-                                    .padding(horizontal = 4.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = YouTubeProgressRed,
-                                    activeTrackColor = YouTubeProgressRed,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.35f)
-                                )
+                                    if (isLive && scrubPositionMs >= durationMs - 2_000) {
+                                        controller.alignLivePlaybackToEdge()
+                                    }
+                                }
                             )
                         }
                     }
@@ -375,38 +401,39 @@ fun VideoPlayerSurface(
         }
     }
 
-    if (isFullscreen) {
-        val activity = context as? Activity
-        DisposableEffect(Unit) {
-            val window = activity?.window
-            val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-            val previousOrientation = activity?.requestedOrientation
-            insetsController?.let {
-                it.hide(WindowInsetsCompat.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    playerContent(modifier)
+}
+
+@Composable
+fun ImmersiveFullscreenEffect(enabled: Boolean) {
+    if (!enabled) return
+    val activity = LocalContext.current as? Activity ?: return
+    DisposableEffect(activity) {
+        val window = activity.window
+        val previousStatusColor = window.statusBarColor
+        val previousNavColor = window.navigationBarColor
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.BLACK))
+        window.statusBarColor = android.graphics.Color.BLACK
+        window.navigationBarColor = android.graphics.Color.BLACK
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            onDispose {
-                insetsController?.show(WindowInsetsCompat.Type.systemBars())
-                activity?.requestedOrientation =
-                    previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            }
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
-        Dialog(
-            onDismissRequest = { isFullscreen = false },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
-        ) {
-            playerContent(Modifier.fillMaxSize())
+        onDispose {
+            WindowCompat.getInsetsController(window, window.decorView)
+                .show(WindowInsetsCompat.Type.systemBars())
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            window.statusBarColor = previousStatusColor
+            window.navigationBarColor = previousNavColor
         }
-    } else {
-        playerContent(
-            modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-        )
     }
 }

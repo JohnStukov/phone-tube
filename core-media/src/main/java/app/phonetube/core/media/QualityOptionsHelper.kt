@@ -12,7 +12,10 @@ import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils
 
 object QualityOptionsHelper {
 
-    fun qualityOptions(formatInfo: MediaItemFormatInfo): List<StreamQualityOption> {
+    fun qualityOptions(
+        formatInfo: MediaItemFormatInfo,
+        preferredAudioLanguage: String? = null
+    ): List<StreamQualityOption> {
 
         val result = LinkedHashMap<String, StreamQualityOption>()
 
@@ -60,7 +63,7 @@ object QualityOptionsHelper {
 
             .forEach { format ->
 
-                val audioUrl = pickAudioUrl(audioFormats, format)
+                val audioUrl = pickAudioUrl(audioFormats, format, preferredAudioLanguage)
 
                 addOption(result, format, audioUrl)
 
@@ -100,7 +103,11 @@ object QualityOptionsHelper {
 
 
 
-    private fun pickAudioUrl(audioFormats: List<MediaFormat>, videoFormat: MediaFormat): String? {
+    private fun pickAudioUrl(
+        audioFormats: List<MediaFormat>,
+        videoFormat: MediaFormat,
+        preferredAudioLanguage: String?
+    ): String? {
 
         if (audioFormats.isEmpty()) return null
 
@@ -112,7 +119,14 @@ object QualityOptionsHelper {
 
         }
 
-        val pool = if (compatible.isNotEmpty()) compatible else audioFormats
+        var pool = if (compatible.isNotEmpty()) compatible else audioFormats
+
+        if (!preferredAudioLanguage.isNullOrBlank()) {
+            val localized = pool.filter {
+                AudioLanguageOptionsHelper.formatMatchesLanguage(it, preferredAudioLanguage)
+            }
+            if (localized.isNotEmpty()) pool = localized
+        }
 
         return pool.maxByOrNull { parseBitrate(it.bitrate) }?.url
 

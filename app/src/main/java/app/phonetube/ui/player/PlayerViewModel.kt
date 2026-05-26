@@ -6,11 +6,15 @@ import androidx.lifecycle.viewModelScope
 import app.phonetube.core.media.CommentPostException
 import app.phonetube.core.media.NotSignedInException
 import app.phonetube.core.media.VideoComment
+import app.phonetube.core.media.PlaybackRestrictions
 import app.phonetube.core.media.VideoMetadata
 import app.phonetube.core.media.YouTubeRepository
+import app.phonetube.core.media.AudioLanguageOptionsHelper
+import app.phonetube.core.media.AudioTrackOption
 import app.phonetube.core.media.StreamQualityOption
 import app.phonetube.core.media.SubtitleOption
 import app.phonetube.core.media.SubtitleOptionsHelper
+import app.phonetube.core.playback.AudioLanguageMode
 import app.phonetube.core.playback.CaptionSize
 import app.phonetube.core.playback.PlayerPrefs
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,6 +38,8 @@ data class PlayerUiState(
     val selectedQualityLabel: String = "Auto",
     val subtitleOptions: List<SubtitleOption> = emptyList(),
     val selectedSubtitleId: String = SubtitleOptionsHelper.OFF_ID,
+    val audioTrackOptions: List<AudioTrackOption> = emptyList(),
+    val selectedAudioTrackId: String? = null,
     val playbackSpeed: Float = 1f,
     val captionSize: CaptionSize = CaptionSize.MEDIUM,
     val autoplayEnabled: Boolean = true,
@@ -59,6 +65,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val previous = _state.value
             _state.value = PlayerUiState(
                 isLoading = true,
+                metadata = VideoMetadata(videoId = videoId, title = ""),
                 playbackSpeed = previous.playbackSpeed,
                 captionSize = playerPrefs.captionSize,
                 autoplayEnabled = previous.autoplayEnabled,
@@ -66,7 +73,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 val metadata = repository.getVideoMetadata(videoId)
-                val qualities = repository.getQualityOptions(videoId)
+                if (PlaybackRestrictions.blocksPlayback(metadata)) {
+                    _state.value = _state.value.copy(
+                        metadata = metadata,
+                        isLoading = false,
+                        error = PlaybackRestrictions.LIVE_UNAVAILABLE
+                    )
+                    return@launch
+                }
+                val preferredAudio = playerPrefs.resolvePreferredAudioLanguage()
+                val audioTracks = repository.getAudioTrackOptions(videoId)
+                val selectedAudio = resolveAudioSelection(audioTracks, preferredAudio)
+                val qualities = repository.getQualityOptions(videoId, preferredAudio)
                 val subtitles = repository.getSubtitleOptions(videoId)
                 val preferredSubtitle = resolveSubtitleSelection(subtitles)
                 _state.value = _state.value.copy(
@@ -75,7 +93,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     qualityOptions = qualities,
                     selectedQualityLabel = "Auto",
                     subtitleOptions = subtitles,
-                    selectedSubtitleId = preferredSubtitle.id
+                    selectedSubtitleId = preferredSubtitle.id,
+                    audioTrackOptions = audioTracks,
+                    selectedAudioTrackId = selectedAudio?.id
                 )
 
                 val commentsKey = metadata.commentsKey
@@ -250,6 +270,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _state.value = _state.value.copy(selectedSubtitleId = option.id)
     }
 
+    fun selectAudioTrack(option: AudioTrackOption, onApplied: (StreamQualityOption?) -> Unit) {
+        val videoId = _state.value.metadata.videoId
+        if (videoId.isBlank()) {
+            onApplied(null)
+            return
+        }
+        viewModelScope.launch {
+            playerPrefs.audioLanguageMode = AudioLanguageMode.MANUAL
+            playerPrefs.audioLanguageCode = option.languageCode
+            val qualities = repository.getQualityOptions(videoId, option.languageCode)
+            val selectedLabel = _state.value.selectedQualityLabel
+            val quality = qualities.firstOrNull { it.label == selectedLabel } ?: qualities.firstOrNull()
+            _state.value = _state.value.copy(
+                qualityOptions = qualities,
+                selectedAudioTrackId = option.id
+            )
+            onApplied(quality)
+        }
+    }
+
     fun setCaptionSize(size: CaptionSize) {
         playerPrefs.captionSize = size
         _state.value = _state.value.copy(captionSize = size)
@@ -269,6 +309,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val preferredId = playerPrefs.preferredSubtitleId
         return options.firstOrNull { it.id == preferredId } ?: options.first()
     }
+
+    private fun resolveAudioSelection(
+        options: List<AudioTrackOption>,
+        preferredLanguage: String?
+    ): AudioTrackOption? = AudioLanguageOptionsHelper.resolveSelection(options, preferredLanguage)
 
     fun findNextRelatedVideo(currentVideoId: String) =
         _state.value.metadata.relatedVideos.firstOrNull { it.videoId != currentVideoId }

@@ -254,6 +254,13 @@ import com.liskovsoft.sharedutils.misc.RoundedBackgroundSpan;
     // Remove embedded styling or font size if requested.
     if (!applyEmbeddedStyles) {
       cueText = cueText.toString(); // Equivalent to erasing all spans.
+      cueLine = Cue.DIMEN_UNSET;
+      cueLineType = Cue.LINE_TYPE_FRACTION;
+      cueLineAnchor = Cue.TYPE_UNSET;
+      cuePosition = Cue.DIMEN_UNSET;
+      cuePositionAnchor = Cue.TYPE_UNSET;
+      cueSize = Cue.DIMEN_UNSET;
+      cueTextAlignment = Alignment.ALIGN_CENTER;
     } else if (!applyEmbeddedFontSizes) {
       SpannableStringBuilder newCueText = new SpannableStringBuilder(cueText);
       int cueLength = newCueText.length();

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.phonetube.R
 import app.phonetube.ui.theme.PhoneTubePrimary
+import app.phonetube.ui.components.AppVersionLabel
 import app.phonetube.ui.theme.PhoneTubePrimaryDark
 import kotlinx.coroutines.delay
 
@@ -138,6 +139,8 @@ fun PhoneTubeSplashScreen(onFinished: () -> Unit) {
                 ),
                 color = Color.White
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            AppVersionLabel(color = Color.White.copy(alpha = 0.72f))
         }
     }
 }

@@ -23,14 +23,45 @@ class ChannelViewModel(application: Application) : AndroidViewModel(application)
     private val _state = MutableStateFlow(ChannelUiState())
     val state: StateFlow<ChannelUiState> = _state.asStateFlow()
 
+    private var loadedChannelId: String? = null
+    private var loadedFallbackName: String? = null
+
     fun load(channelId: String, fallbackName: String?) {
+        loadedChannelId = channelId
+        loadedFallbackName = fallbackName
+        reloadChannel(tabId = null, sortId = null)
+    }
+
+    fun selectTab(tabId: String) {
+        val channel = _state.value.channel ?: return
+        reloadChannel(tabId = tabId, sortId = channel.selectedSortId)
+    }
+
+    fun selectSort(sortId: String) {
+        val channel = _state.value.channel ?: return
+        reloadChannel(tabId = channel.selectedTabId, sortId = sortId)
+    }
+
+    private fun reloadChannel(tabId: String?, sortId: String?) {
+        val channelId = loadedChannelId ?: return
+        val previous = _state.value.channel
         viewModelScope.launch {
-            _state.value = ChannelUiState(isLoading = true, error = null)
+            _state.value = _state.value.copy(
+                isLoading = true,
+                error = null,
+                channel = previous?.copy(videos = emptyList())
+            )
             try {
-                val channel = repository.loadChannel(channelId, fallbackName)
+                val channel = repository.loadChannel(
+                    channelId,
+                    loadedFallbackName,
+                    tabId ?: previous?.selectedTabId,
+                    sortId ?: previous?.selectedSortId
+                )
                 _state.value = ChannelUiState(channel = channel, isLoading = false)
             } catch (e: Exception) {
                 _state.value = ChannelUiState(
+                    channel = previous,
                     isLoading = false,
                     error = e.message ?: e.javaClass.simpleName
                 )
@@ -48,7 +79,12 @@ class ChannelViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     repository.subscribe(channelId)
                 }
-                val updated = repository.loadChannel(channelId, channel.name)
+                val updated = repository.loadChannel(
+                    channelId,
+                    channel.name,
+                    channel.selectedTabId,
+                    channel.selectedSortId
+                )
                 _state.value = _state.value.copy(channel = updated)
             } catch (e: NotSignedInException) {
                 _state.value = _state.value.copy(actionMessage = "sign_in_required_action")

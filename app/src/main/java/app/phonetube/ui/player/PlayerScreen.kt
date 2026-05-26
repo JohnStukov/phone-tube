@@ -1,5 +1,8 @@
 package app.phonetube.ui.player
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -45,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
 import app.phonetube.core.media.AuthRepository
+import app.phonetube.core.media.PlaybackRestrictions
 import app.phonetube.core.media.VideoComment
 import app.phonetube.core.playback.PhonePlayerController
 import app.phonetube.core.playback.SeekSegment
@@ -76,13 +82,44 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val controller = remember(playbackHost) { playbackHost.getOrCreateController() }
     val playerState by viewModel.state.collectAsState()
     val metadata = playerState.metadata
     val playbackIsLive = isLive || metadata.isLive
     var playbackError by remember { mutableStateOf<String?>(null) }
     var segments by remember { mutableStateOf<List<SeekSegment>>(emptyList()) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    var userExitedFullscreen by remember { mutableStateOf(false) }
     CollectPlayerActions(viewModel.actionEvents)
+
+    fun setImmersive(enabled: Boolean) {
+        if (enabled) {
+            userExitedFullscreen = false
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            isFullscreen = true
+        } else {
+            userExitedFullscreen = true
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            isFullscreen = false
+        }
+    }
+
+    LaunchedEffect(isLandscape) {
+        if (userExitedFullscreen) {
+            if (!isLandscape) userExitedFullscreen = false
+            return@LaunchedEffect
+        }
+        isFullscreen = isLandscape
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     LaunchedEffect(playerState.actionMessage) {
         val msg = resolveActionMessage(context, playerState.actionMessage)
@@ -94,7 +131,13 @@ fun PlayerScreen(
 
     LaunchedEffect(videoId) {
         playbackError = null
-        controller.onError = { playbackError = it.message }
+        controller.onError = { err ->
+            playbackError = when (err.message) {
+                PlaybackRestrictions.LIVE_UNAVAILABLE ->
+                    context.getString(R.string.playback_live_unavailable)
+                else -> err.message
+            }
+        }
         controller.onSegmentsChanged = { segments = it }
         viewModel.loadDetails(videoId)
     }
@@ -107,6 +150,7 @@ fun PlayerScreen(
         playerState.metadata.isLive
     ) {
         if (playerState.isLoading || playerState.metadata.videoId != videoId) return@LaunchedEffect
+        if (PlaybackRestrictions.blocksPlayback(playerState.metadata)) return@LaunchedEffect
         playbackHost.onEnterPlayerScreen(
             videoId = videoId,
             isLive = playbackIsLive,
@@ -124,8 +168,11 @@ fun PlayerScreen(
                 playbackIsLive,
                 quality?.streamUrl,
                 quality?.audioStreamUrl,
-                subtitle
+                subtitle,
+                percentWatched = if (playbackIsLive) -1 else playerState.metadata.percentWatched
             )
+        } else if (playbackIsLive) {
+            controller.alignLivePlaybackToEdge()
         }
     }
 
@@ -165,62 +212,53 @@ fun PlayerScreen(
         onBack()
     }
 
-    BackHandler { exitPlayer() }
+    BackHandler(enabled = isFullscreen) { setImmersive(false) }
+    BackHandler(enabled = !isFullscreen) { exitPlayer() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        YouTubePlayerTopBar(
-            onBack = exitPlayer,
-            onCastClick = onCastClick,
-            onSearchClick = onSearchClick
-        )
+    ImmersiveFullscreenEffect(enabled = isFullscreen)
 
-        VideoPlayerSurface(
-            controller = controller,
-            isLive = playbackIsLive,
-            onSettingsClick = { viewModel.setShowSettings(true) }
-        )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isFullscreen) Color.Black else Color.Transparent)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (!isFullscreen) {
+                YouTubePlayerTopBar(
+                    onBack = exitPlayer,
+                    onCastClick = onCastClick,
+                    onSearchClick = onSearchClick
+                )
+            }
 
-        if (playerState.showSettings) {
-                PlayerSettingsSheet(
-                    qualityOptions = playerState.qualityOptions,
-                    selectedQualityLabel = playerState.selectedQualityLabel,
-                    subtitleOptions = playerState.subtitleOptions,
-                    selectedSubtitleId = playerState.selectedSubtitleId,
-                    playbackSpeed = playerState.playbackSpeed,
-                    captionSize = playerState.captionSize,
-                    autoplayEnabled = playerState.autoplayEnabled,
-                    onQualitySelected = { option ->
-                        viewModel.selectQuality(option)
-                        controller.setStreamUrl(
-                            videoId,
-                            playbackIsLive,
-                            option.streamUrl,
-                            option.audioStreamUrl
-                        )
-                    },
-                    onSubtitleSelected = { option ->
-                        viewModel.selectSubtitle(option)
-                        controller.setSubtitle(option)
-                    },
-                    onSpeedSelected = { speed ->
-                        viewModel.setPlaybackSpeed(speed)
-                        controller.setPlaybackSpeed(speed)
-                    },
-                    onCaptionSizeSelected = { size ->
-                        viewModel.setCaptionSize(size)
-                        controller.applyCaptionSize(size)
-                    },
-                    onAutoplayChanged = { viewModel.setAutoplayEnabled(it) },
-                    onDismiss = { viewModel.setShowSettings(false) }
+            VideoPlayerSurface(
+                controller = controller,
+                isLive = playbackIsLive,
+                isFullscreen = isFullscreen,
+                onFullscreenChange = { setImmersive(it) },
+                sponsorSegments = segments,
+                settingsOpen = playerState.showSettings,
+                onSettingsClick = { viewModel.setShowSettings(true) },
+                modifier = if (isFullscreen) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                }
             )
-        }
 
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-            val displayError = playbackError ?: playerState.error
+            if (!isFullscreen) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+            val displayError = playbackError ?: when (playerState.error) {
+                PlaybackRestrictions.LIVE_UNAVAILABLE ->
+                    stringResource(R.string.playback_live_unavailable)
+                else -> playerState.error
+            }
             if (displayError != null) {
                 Text(
                     text = displayError,
@@ -253,6 +291,15 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val openChannel = {
+                    if (isFullscreen) setImmersive(false)
+                    if (playbackHost.canMinimize(controller)) {
+                        playbackHost.minimize(
+                            videoId = videoId,
+                            isLive = playbackIsLive,
+                            title = metadata.title,
+                            author = metadata.author
+                        )
+                    }
                     viewModel.openChannel(videoId) { channelId, channelName ->
                         onChannelClick(channelId, channelName)
                     }
@@ -401,6 +448,64 @@ fun PlayerScreen(
                     )
                 }
             }
+                }
+            }
+        }
+
+        if (playerState.showSettings) {
+            PlayerSettingsSheet(
+                qualityOptions = playerState.qualityOptions,
+                selectedQualityLabel = playerState.selectedQualityLabel,
+                audioTrackOptions = playerState.audioTrackOptions,
+                selectedAudioTrackId = playerState.selectedAudioTrackId,
+                subtitleOptions = playerState.subtitleOptions,
+                selectedSubtitleId = playerState.selectedSubtitleId,
+                playbackSpeed = playerState.playbackSpeed,
+                captionSize = playerState.captionSize,
+                autoplayEnabled = playerState.autoplayEnabled,
+                onQualitySelected = { option ->
+                    viewModel.selectQuality(option)
+                    controller.setStreamUrl(
+                        videoId,
+                        playbackIsLive,
+                        option.streamUrl,
+                        option.audioStreamUrl
+                    )
+                },
+                onAudioTrackSelected = { option ->
+                    controller.setAudioLanguage(option.languageCode)
+                    viewModel.selectAudioTrack(option) { quality ->
+                        if (quality != null && quality.streamUrl != null) {
+                            controller.setStreamUrl(
+                                videoId,
+                                playbackIsLive,
+                                quality.streamUrl,
+                                quality.audioStreamUrl
+                            )
+                        } else {
+                            controller.play(
+                                videoId,
+                                playbackIsLive,
+                                subtitle = viewModel.selectedSubtitle()
+                            )
+                        }
+                    }
+                },
+                onSubtitleSelected = { option ->
+                    viewModel.selectSubtitle(option)
+                    controller.setSubtitle(option)
+                },
+                onSpeedSelected = { speed ->
+                    viewModel.setPlaybackSpeed(speed)
+                    controller.setPlaybackSpeed(speed)
+                },
+                onCaptionSizeSelected = { size ->
+                    viewModel.setCaptionSize(size)
+                    controller.applyCaptionSize(size)
+                },
+                onAutoplayChanged = { viewModel.setAutoplayEnabled(it) },
+                onDismiss = { viewModel.setShowSettings(false) }
+            )
         }
     }
 }

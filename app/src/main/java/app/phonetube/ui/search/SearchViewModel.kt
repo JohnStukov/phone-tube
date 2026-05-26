@@ -29,7 +29,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private var suggestionsJob: Job? = null
 
     fun onQueryChange(query: String) {
-        _state.value = _state.value.copy(query = query, error = null)
+        _state.value = _state.value.copy(
+            query = query,
+            error = null,
+            hasSearched = false,
+            results = emptyList()
+        )
         suggestionsJob?.cancel()
         if (query.isBlank()) {
             _state.value = _state.value.copy(suggestions = emptyList(), isSearchingSuggestions = false)

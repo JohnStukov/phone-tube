@@ -15,18 +15,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.phonetube.ui.PhoneTubeNavHost
 import app.phonetube.ui.splash.PhoneTubeSplashScreen
 import app.phonetube.ui.theme.PhoneTubeTheme
 
 class MainActivity : ComponentActivity() {
 
-    private val keepSystemSplash = mutableStateOf(true)
-
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splashScreen = installSplashScreen()
-        splashScreen.setKeepOnScreenCondition { keepSystemSplash.value }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applyTaskDescription()
@@ -44,7 +39,6 @@ class MainActivity : ComponentActivity() {
                         PhoneTubeSplashScreen(
                             onFinished = {
                                 showAnimatedSplash = false
-                                keepSystemSplash.value = false
                                 applyTaskDescription()
                             }
                         )

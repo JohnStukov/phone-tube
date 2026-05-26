@@ -75,6 +75,8 @@ import app.phonetube.R
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoMetadata
 import app.phonetube.core.playback.PhonePlayerController
+import app.phonetube.ui.components.KeepScreenOnEffect
+import app.phonetube.ui.components.PortraitLockEffect
 import app.phonetube.ui.components.createTouchTransparentPlayerView
 import app.phonetube.ui.components.YouTubeAsyncImage
 import app.phonetube.ui.components.YouTubeSubscribePill
@@ -89,6 +91,8 @@ fun ShortsScreen(
     viewModel: ShortsViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    KeepScreenOnEffect(enabled = true)
+    PortraitLockEffect()
     val context = LocalContext.current
     val controller = remember { PhonePlayerController(context) }
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -99,10 +103,15 @@ fun ShortsScreen(
     var isPlaying by remember { mutableStateOf(true) }
 
     DisposableEffect(Unit) {
+        controller.setLooping(true)
         controller.onError = { playbackError = it.message }
         controller.onVideoReady = { videoReady = true }
-        controller.onProgressUpdate = { pos, dur ->
-            playbackProgress = if (dur > 0L) pos.toFloat() / dur.toFloat() else 0f
+        controller.onProgressUpdate = { positionMs, durationMs ->
+            playbackProgress = if (durationMs > 0L) {
+                positionMs.toFloat() / durationMs.toFloat()
+            } else {
+                0f
+            }
             isPlaying = controller.isPlaying()
         }
         onDispose {

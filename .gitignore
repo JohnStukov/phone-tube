@@ -2,7 +2,15 @@
 *.jks
 *.keystore
 keystore.properties
+phonetube-release.jks
 local.properties
+.env
+.env.*
+!.env.example
+google-services.json
+secrets/
+*.pem
+*.p12
 
 # --- Build / Gradle ---
 .gradle/
@@ -16,21 +24,34 @@ build/
 *.ap_
 *.dex
 output.json
+outputs/
+release/
+*.mapping
 
 # --- Android Studio / IDE ---
 .idea/
 *.iml
+.vscode/
+*.code-workspace
 .DS_Store
 Thumbs.db
+
+# --- Kotlin / NDK ---
+.kotlin/
+obj/
+*.hprof
 
 # --- Cursor / índices locales ---
 .cursor/
 .codegraph/
+agent-transcripts/
 
 # --- Logs y temporales ---
 *.log
 *.tmp
 *.swp
+*.orig
 
-# --- Opcional: descomenta si no quieres subir reglas de Cursor ---
-# .cursor/
+# --- Tests / cobertura ---
+coverage/
+*.exec

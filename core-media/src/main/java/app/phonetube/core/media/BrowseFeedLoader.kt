@@ -13,8 +13,8 @@ internal class BrowseFeedLoader(context: Context) {
         return when (feed) {
             HomeFeedKind.ALL -> pageFromHome(browse.getHome())
             HomeFeedKind.TRENDING -> loadTrending()
-            HomeFeedKind.MUSIC -> pageFromHome(browse.getMusic())
             HomeFeedKind.GAMING -> pageFromHome(browse.getGaming())
+            HomeFeedKind.MUSIC -> pageFromHome(browse.getMusic())
             HomeFeedKind.LIVE -> pageFromHome(browse.getLive())
         }
     }
@@ -26,18 +26,6 @@ internal class BrowseFeedLoader(context: Context) {
     }
 
     private fun loadTrending(): FeedPage {
-        val tv = browse.getTrendingTv()
-        if (tv != null && !tv.first.isNullOrEmpty()) {
-            val expanded = expandChipSections(tv.first)
-            val videos = VideoItemMapper.fromGroups(expanded)
-            if (videos.isNotEmpty()) {
-                return FeedPage(
-                    videos = videos,
-                    nextPageKey = tv.second,
-                    groupType = MediaGroup.TYPE_TRENDING
-                )
-            }
-        }
         val expanded = expandChipSections(browse.getTrending())
         return pageFromGroups(expanded, null, MediaGroup.TYPE_TRENDING)
     }

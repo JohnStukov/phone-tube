@@ -103,7 +103,8 @@ object VideoItemMapper {
 
             durationLabel = durationLabel.takeIf { it.isNotBlank() },
 
-            channelId = item.channelId
+            channelId = item.channelId,
+            percentWatched = item.percentWatched
 
         )
 

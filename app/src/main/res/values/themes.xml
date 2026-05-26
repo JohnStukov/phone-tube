@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PhoneTube" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_phonetube_mark</item>
-        <item name="windowSplashScreenIconBackgroundColor">@color/splash_background</item>
-        <item name="postSplashScreenTheme">@style/Theme.PhoneTube.Main</item>
+    <style name="Theme.PhoneTube" parent="Theme.PhoneTube.Main">
+        <item name="android:windowBackground">@color/splash_background</item>
     </style>
 
     <style name="Theme.PhoneTube.Main" parent="android:Theme.Material.NoActionBar">
