@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
 import app.phonetube.ui.feed.VideoFeedList
+import app.phonetube.util.resolveMediaErrorMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +106,7 @@ fun SearchScreen(
                 VideoFeedList(
                     videos = state.results,
                     isLoading = state.isLoading,
-                    error = state.error,
+                    error = resolveMediaErrorMessage(state.error),
                     emptyMessage = stringResource(
                         if (state.hasSearched) R.string.search_empty else R.string.search_prompt
                     ),

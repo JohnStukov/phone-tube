@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -24,9 +25,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
+import app.phonetube.ui.components.PullRefreshBox
 import app.phonetube.ui.feed.VideoFeedList
+import app.phonetube.util.resolveMediaErrorMessage
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun NotificationsScreen(
     onBack: () -> Unit,
@@ -64,14 +67,22 @@ fun NotificationsScreen(
                         Text(stringResource(R.string.sign_in_button))
                     }
                 }
-                else -> VideoFeedList(
-                    videos = state.videos,
-                    isLoading = state.isLoading,
-                    error = state.error,
-                    emptyMessage = stringResource(R.string.notifications_empty),
-                    onVideoClick = onVideoClick,
-                    modifier = Modifier.fillMaxSize()
-                )
+                else -> PullRefreshBox(
+                    refreshing = state.isRefreshing,
+                    onRefresh = { viewModel.refresh() }
+                ) {
+                    VideoFeedList(
+                        videos = state.videos,
+                        isLoading = state.isLoading && !state.isRefreshing,
+                        error = resolveMediaErrorMessage(state.error),
+                        emptyMessage = stringResource(R.string.notifications_empty),
+                        onVideoClick = onVideoClick,
+                        modifier = Modifier.fillMaxSize(),
+                        isLoadingMore = state.isLoadingMore,
+                        canLoadMore = state.canLoadMore,
+                        onLoadMore = { viewModel.loadMore() }
+                    )
+                }
             }
         }
     }

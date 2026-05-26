@@ -1,5 +1,6 @@
 package app.phonetube.ui.library
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,9 +8,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,30 +35,38 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
 import app.phonetube.core.media.AccountInfo
 import app.phonetube.core.media.AuthState
+import app.phonetube.navigation.TopBarActions
 import app.phonetube.ui.auth.AuthViewModel
+import app.phonetube.ui.channel.ChannelPlaylistRow
 import app.phonetube.ui.components.AppVersionLabel
 import app.phonetube.ui.components.ChannelAvatar
-import app.phonetube.navigation.TopBarActions
+import app.phonetube.ui.components.PullRefreshBox
 import app.phonetube.ui.components.YouTubeTopBar
-import app.phonetube.ui.feed.VideoFeedList
+import app.phonetube.ui.components.YouTubeVideoCard
+import app.phonetube.util.resolveMediaErrorMessage
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun LibraryScreen(
     onVideoClick: (videoId: String, isLive: Boolean) -> Unit,
     onSignIn: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAccount: () -> Unit = {},
     topBarActions: TopBarActions = TopBarActions(),
     libraryViewModel: LibraryViewModel = viewModel(),
     authViewModel: AuthViewModel = viewModel()
 ) {
     val state by libraryViewModel.state.collectAsState()
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         YouTubeTopBar(
             onSearchClick = topBarActions.onSearchClick,
             onCastClick = topBarActions.onCastClick,
             onNotificationsClick = topBarActions.onNotificationsClick,
-            onAccountClick = { }
+            onAccountClick = onOpenAccount,
+            accountName = state.auth.selectedAccount?.name,
+            accountImageUrl = state.auth.selectedAccount?.avatarUrl
         )
 
         LibraryHeader(
@@ -65,12 +79,6 @@ fun LibraryScreen(
 
         Divider()
 
-        Text(
-            text = stringResource(R.string.library_history),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-
         Box(modifier = Modifier.weight(1f)) {
             if (!state.auth.isSignedIn) {
                 Text(
@@ -80,14 +88,108 @@ fun LibraryScreen(
                     modifier = Modifier.padding(16.dp)
                 )
             } else {
-                VideoFeedList(
-                    videos = state.historyVideos,
-                    isLoading = state.isLoading,
-                    error = state.error,
-                    emptyMessage = stringResource(R.string.library_history_empty),
-                    onVideoClick = onVideoClick,
-                    modifier = Modifier.fillMaxSize()
-                )
+                PullRefreshBox(
+                    refreshing = state.isRefreshing,
+                    onRefresh = { libraryViewModel.refresh() }
+                ) {
+                    when {
+                        state.isLoading -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                        else -> {
+                            val errorMessage = resolveMediaErrorMessage(state.error)
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                item(key = "history_title") {
+                                    Text(
+                                        text = stringResource(R.string.library_history),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                                if (state.historyVideos.isEmpty()) {
+                                    item(key = "history_empty") {
+                                        Text(
+                                            text = stringResource(R.string.library_history_empty),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                } else {
+                                    items(state.historyVideos, key = { it.stableListKey }) { video ->
+                                        YouTubeVideoCard(
+                                            video = video,
+                                            onClick = {
+                                                libraryViewModel.openItem(
+                                                    video,
+                                                    onOpenVideo = onVideoClick,
+                                                    onPlaylistUnavailable = {
+                                                        Toast.makeText(
+                                                            context,
+                                                            R.string.error_playlist_unavailable,
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                                item(key = "playlists_title") {
+                                    Text(
+                                        text = stringResource(R.string.library_playlists),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        )
+                                    )
+                                }
+                                if (state.playlistVideos.isEmpty()) {
+                                    item(key = "playlists_empty") {
+                                        Text(
+                                            text = stringResource(R.string.library_playlists_empty),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                } else {
+                                    items(state.playlistVideos, key = { it.stableListKey }) { playlist ->
+                                        ChannelPlaylistRow(
+                                            playlist = playlist,
+                                            onClick = {
+                                                libraryViewModel.openItem(
+                                                    playlist,
+                                                    onOpenVideo = onVideoClick,
+                                                    onPlaylistUnavailable = {
+                                                        Toast.makeText(
+                                                            context,
+                                                            R.string.error_playlist_unavailable,
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                                if (errorMessage != null) {
+                                    item(key = "library_error") {
+                                        Text(
+                                            text = errorMessage,
+                                            color = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

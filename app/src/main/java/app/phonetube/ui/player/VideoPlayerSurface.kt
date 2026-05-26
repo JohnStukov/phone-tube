@@ -49,7 +49,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -79,6 +81,7 @@ private enum class SeekRippleSide { LEFT, RIGHT }
 @Composable
 fun VideoPlayerSurface(
     controller: PhonePlayerController,
+    videoId: String,
     isLive: Boolean,
     isFullscreen: Boolean,
     onFullscreenChange: (Boolean) -> Unit,
@@ -98,14 +101,27 @@ fun VideoPlayerSurface(
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
     var pendingSingleTapJob by remember { mutableStateOf<Job?>(null) }
+    val isScrubbingState = rememberUpdatedState(isScrubbing)
 
-    DisposableEffect(controller) {
+    LaunchedEffect(videoId) {
+        positionMs = 0L
+        durationMs = 0L
+        scrubPositionMs = 0L
+        isScrubbing = false
+    }
+
+    DisposableEffect(controller, videoId) {
+        val activeVideoId = videoId
         controller.onProgressUpdate = { position, duration ->
-            if (!isScrubbing) {
-                positionMs = position
+            if (controller.getCurrentVideoId() == activeVideoId) {
+                if (!isScrubbingState.value) {
+                    positionMs = position.coerceAtLeast(0L)
+                }
+                if (duration > 0L) {
+                    durationMs = duration
+                }
+                isPlaying = controller.isPlaying()
             }
-            durationMs = duration
-            isPlaying = controller.isPlaying()
         }
         onDispose {
             controller.onProgressUpdate = null
@@ -375,25 +391,27 @@ fun VideoPlayerSurface(
                         }
 
                         if (durationMs > 0) {
-                            SponsorBlockProgressSlider(
-                                value = sliderValue,
-                                durationMs = durationMs,
-                                sponsorSegments = if (isLive) emptyList() else sponsorSegments,
-                                onValueChange = { value ->
-                                    pendingSingleTapJob?.cancel()
-                                    isScrubbing = true
-                                    scrubPositionMs = (value * durationMs).toLong()
-                                    showControls()
-                                },
-                                onValueChangeFinished = {
-                                    controller.seekTo(scrubPositionMs)
-                                    positionMs = scrubPositionMs
-                                    isScrubbing = false
-                                    if (isLive && scrubPositionMs >= durationMs - 2_000) {
-                                        controller.alignLivePlaybackToEdge()
+                            key(videoId) {
+                                SponsorBlockProgressSlider(
+                                    value = sliderValue,
+                                    durationMs = durationMs,
+                                    sponsorSegments = if (isLive) emptyList() else sponsorSegments,
+                                    onValueChange = { value ->
+                                        pendingSingleTapJob?.cancel()
+                                        isScrubbing = true
+                                        scrubPositionMs = (value * durationMs).toLong()
+                                        showControls()
+                                    },
+                                    onValueChangeFinished = {
+                                        controller.seekTo(scrubPositionMs)
+                                        positionMs = scrubPositionMs
+                                        isScrubbing = false
+                                        if (isLive && scrubPositionMs >= durationMs - 2_000) {
+                                            controller.alignLivePlaybackToEdge()
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }

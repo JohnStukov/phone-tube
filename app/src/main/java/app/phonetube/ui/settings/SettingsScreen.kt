@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.phonetube.R
 import app.phonetube.ui.components.AppVersionLabel
+import app.phonetube.core.media.ContentRegionStore
 import app.phonetube.core.playback.AudioLanguageCatalog
 import app.phonetube.core.playback.AudioLanguageMode
 import app.phonetube.core.playback.PlayerPrefs
@@ -46,6 +47,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { SponsorBlockPrefs(context) }
     val playerPrefs = remember { PlayerPrefs(context) }
+    val regionStore = remember { ContentRegionStore.get(context) }
+    var regionAuto by remember { mutableStateOf(regionStore.isAuto()) }
+    var selectedCountry by remember { mutableStateOf(regionStore.getCountryCode()) }
     var sbEnabled by remember { mutableStateOf(prefs.isEnabled) }
     var audioUseSystem by remember {
         mutableStateOf(playerPrefs.audioLanguageMode == AudioLanguageMode.SYSTEM)
@@ -119,6 +123,67 @@ fun SettingsScreen(onBack: () -> Unit) {
                         categoryStates = categoryStates.toMutableMap().apply { put(category, enabled) }
                     }
                 )
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 12.dp))
+
+            Text(
+                text = stringResource(R.string.settings_content_region),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = stringResource(R.string.settings_content_region_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        regionAuto = true
+                        selectedCountry = null
+                        regionStore.setAuto()
+                    }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = regionAuto,
+                    onClick = {
+                        regionAuto = true
+                        selectedCountry = null
+                        regionStore.setAuto()
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.settings_content_region_auto),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+            ContentRegionStore.SUPPORTED_COUNTRY_CODES.forEach { code ->
+                val label = ContentRegionStore.displayCountryName(code)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            regionAuto = false
+                            selectedCountry = code
+                            regionStore.setCountry(code)
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = !regionAuto && selectedCountry == code,
+                        onClick = {
+                            regionAuto = false
+                            selectedCountry = code
+                            regionStore.setCountry(code)
+                        }
+                    )
+                    Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                }
             }
 
             Divider(modifier = Modifier.padding(vertical = 12.dp))

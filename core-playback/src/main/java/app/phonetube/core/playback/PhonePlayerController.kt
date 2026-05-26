@@ -41,6 +41,7 @@ class PhonePlayerController(
     private val subtitleMediaSourceFactory = SubtitleMediaSourceFactory(appContext)
     private var sponsorBlockEngine: SponsorBlockEngine? = null
     private var currentVideoId: String? = null
+    private var acceptedProgressVideoId: String? = null
     private var isLive: Boolean = false
     private var playbackSpeed: Float = 1f
     private var selectedStreamUrl: String? = null
@@ -64,10 +65,22 @@ class PhonePlayerController(
     }
 
     private fun notifyProgress() {
-        val position = player.currentPosition
+        val videoId = currentVideoId
+        val position = player.currentPosition.coerceAtLeast(0L)
         val duration = player.duration
-        onProgressUpdate?.invoke(position, duration)
+        if (videoId != null && videoId == acceptedProgressVideoId) {
+            if (duration > 0L) {
+                onProgressUpdate?.invoke(position, duration)
+            } else {
+                onProgressUpdate?.invoke(position, 0L)
+            }
+        }
         persistProgress(position, duration)
+    }
+
+    private fun notifyProgressReset() {
+        acceptedProgressVideoId = null
+        onProgressUpdate?.invoke(0L, 0L)
     }
 
     private fun persistProgress(positionMs: Long, durationMs: Long) {
@@ -82,6 +95,7 @@ class PhonePlayerController(
             override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_READY -> {
+                        acceptedProgressVideoId = currentVideoId
                         if (isLive) {
                             seekToLiveEdge()
                         }
@@ -92,7 +106,10 @@ class PhonePlayerController(
                         notifyProgress()
                         onVideoReady?.invoke()
                     }
-                    Player.STATE_ENDED -> onPlaybackEnded?.invoke()
+                    Player.STATE_ENDED -> {
+                        acceptedProgressVideoId = null
+                        onPlaybackEnded?.invoke()
+                    }
                 }
             }
         })
@@ -129,6 +146,7 @@ class PhonePlayerController(
     ) {
         currentVideoId = videoId
         this.isLive = isLive
+        notifyProgressReset()
         if (streamUrl != null) {
             selectedStreamUrl = streamUrl
             selectedAudioStreamUrl = audioStreamUrl
@@ -244,6 +262,7 @@ class PhonePlayerController(
             return
         }
         val source = subtitleMediaSourceFactory.mergeWithSubtitle(videoSource, selectedSubtitle)
+        notifyProgressReset()
         player.prepare(source)
         player.playbackParameters = PlaybackParameters(playbackSpeed)
         player.playWhenReady = true

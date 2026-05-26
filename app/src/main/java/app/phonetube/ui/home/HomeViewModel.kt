@@ -9,10 +9,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 
 import app.phonetube.core.media.HomeFeedKind
-
+import app.phonetube.core.media.MediaErrors
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoItemMapper
-
 import app.phonetube.core.media.YouTubeRepository
 
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,17 +45,14 @@ data class HomeUiState(
 
 
 enum class HomeFeed {
-
     ALL,
-
     TRENDING,
-
+    NEWS,
     MUSIC,
-
     GAMING,
-
-    LIVE
-
+    SPORTS,
+    LIVE,
+    MOVIES
 }
 
 
@@ -191,8 +187,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                     isLoadingMore = false,
 
-                    error = e.message ?: e.javaClass.simpleName
-
+                    error = MediaErrors.codeFor(e)
                 )
 
             }
@@ -239,8 +234,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 isLoadingMore = false,
 
-                error = e.message ?: e.javaClass.simpleName
-
+                error = MediaErrors.codeFor(e)
             )
 
         }
@@ -276,17 +270,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
 
     private fun HomeFeed.toKind(): HomeFeedKind = when (this) {
-
         HomeFeed.ALL -> HomeFeedKind.ALL
-
         HomeFeed.TRENDING -> HomeFeedKind.TRENDING
-
+        HomeFeed.NEWS -> HomeFeedKind.NEWS
         HomeFeed.MUSIC -> HomeFeedKind.MUSIC
-
         HomeFeed.GAMING -> HomeFeedKind.GAMING
-
+        HomeFeed.SPORTS -> HomeFeedKind.SPORTS
         HomeFeed.LIVE -> HomeFeedKind.LIVE
-
+        HomeFeed.MOVIES -> HomeFeedKind.MOVIES
     }
 
 }

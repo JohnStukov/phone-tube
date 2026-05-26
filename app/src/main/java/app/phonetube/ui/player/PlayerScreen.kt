@@ -233,6 +233,7 @@ fun PlayerScreen(
 
             VideoPlayerSurface(
                 controller = controller,
+                videoId = videoId,
                 isLive = playbackIsLive,
                 isFullscreen = isFullscreen,
                 onFullscreenChange = { setImmersive(it) },

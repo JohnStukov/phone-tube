@@ -24,6 +24,12 @@
     <string name="chip_music">Music</string>
     <string name="chip_gaming">Gaming</string>
     <string name="chip_live">Live</string>
+    <string name="chip_news">News</string>
+    <string name="chip_sports">Sports</string>
+    <string name="chip_movies">Movies</string>
+    <string name="settings_content_region">Content region</string>
+    <string name="settings_content_region_auto">Automatic (device)</string>
+    <string name="settings_content_region_hint">Affects home, trending and topic feeds. Home reloads when you change this.</string>
     <string name="nav_home">Home</string>
     <string name="nav_shorts">Shorts</string>
     <string name="nav_create">Create</string>
@@ -128,6 +134,14 @@
     <string name="sb_category_preview">Preview / recap</string>
     <string name="sb_category_highlight">Highlight</string>
     <string name="sb_category_filler">Filler</string>
+
+    <string name="error_network">Check your connection and try again</string>
+    <string name="error_generic">Something went wrong. Try again.</string>
+    <string name="error_playlist_unavailable">Could not open this playlist</string>
+    <string name="channel_playlists_empty">No playlists on this channel</string>
+    <string name="library_playlists">Playlists</string>
+    <string name="library_playlists_empty">No playlists</string>
+    <string name="library_playlists_sign_in">Sign in to see your playlists</string>
 
     <string name="mini_player_close">Close mini player</string>
     <string name="mini_player_play_pause">Play or pause</string>

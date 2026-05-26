@@ -249,6 +249,7 @@ fun PhoneTubeNavHost(
                             onVideoClick = openPlayer,
                             onSignIn = openSignIn,
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                            onOpenAccount = openAccount,
                             topBarActions = topBarActions
                         )
                     }

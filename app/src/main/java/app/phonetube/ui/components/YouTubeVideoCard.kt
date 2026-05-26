@@ -30,8 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.phonetube.R
 import app.phonetube.core.media.VideoItem
-import app.phonetube.ui.theme.YouTubeBadgeBackground
-import app.phonetube.ui.theme.YouTubeLiveRed
 
 @Composable
 fun YouTubeVideoCard(
@@ -79,7 +77,7 @@ fun YouTubeVideoCard(
                 }
             }
             if (video.isLive) {
-                LiveBadge(
+                VideoLiveBadge(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(8.dp)
@@ -87,12 +85,12 @@ fun YouTubeVideoCard(
             } else {
                 val durationLabel = video.durationLabel
                 if (!durationLabel.isNullOrBlank()) {
-                DurationBadge(
-                    label = durationLabel,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                )
+                    VideoDurationBadge(
+                        label = durationLabel,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                    )
                 }
             }
         }
@@ -149,28 +147,3 @@ private fun buildVideoMeta(video: VideoItem): String {
     return video.author.orEmpty()
 }
 
-@Composable
-private fun DurationBadge(label: String, modifier: Modifier = Modifier) {
-    Text(
-        text = label,
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(YouTubeBadgeBackground)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = androidx.compose.ui.graphics.Color.White
-    )
-}
-
-@Composable
-private fun LiveBadge(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(R.string.live_badge),
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(YouTubeLiveRed)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = androidx.compose.ui.graphics.Color.White
-    )
-}

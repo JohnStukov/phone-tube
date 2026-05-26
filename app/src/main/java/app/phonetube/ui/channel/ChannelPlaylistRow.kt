@@ -21,13 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.phonetube.core.media.VideoItem
-import app.phonetube.ui.components.VideoDurationBadge
-import app.phonetube.ui.components.VideoLiveBadge
 import app.phonetube.ui.components.YouTubeAsyncImage
 
 @Composable
-fun ChannelVideoRow(
-    video: VideoItem,
+fun ChannelPlaylistRow(
+    playlist: VideoItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -45,27 +43,11 @@ fun ChannelVideoRow(
                 .clip(RoundedCornerShape(10.dp))
         ) {
             YouTubeAsyncImage(
-                url = video.thumbnailUrl,
+                url = playlist.thumbnailUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            if (video.isLive) {
-                VideoLiveBadge(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(6.dp)
-                )
-            } else {
-                video.durationLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                    VideoDurationBadge(
-                        label = label,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp)
-                    )
-                }
-            }
         }
         Column(
             modifier = Modifier
@@ -73,13 +55,13 @@ fun ChannelVideoRow(
                 .padding(start = 12.dp)
         ) {
             Text(
-                text = video.title,
+                text = playlist.title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            val meta = video.subtitle?.trim().orEmpty()
+            val meta = playlist.subtitle?.trim().orEmpty()
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,

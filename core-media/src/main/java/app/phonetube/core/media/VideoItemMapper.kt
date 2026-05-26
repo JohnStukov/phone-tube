@@ -3,7 +3,6 @@ package app.phonetube.core.media
 
 
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
-
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
 
 
@@ -25,13 +24,9 @@ object VideoItemMapper {
             for (item in mediaItems) {
 
                 mapItem(item)?.let { video ->
-
-                    if (seen.add(video.videoId)) {
-
+                    if (seen.add(video.stableListKey)) {
                         result.add(video)
-
                     }
-
                 }
 
             }
@@ -47,7 +42,7 @@ object VideoItemMapper {
         val seen = LinkedHashSet<String>(videos.size)
         val result = ArrayList<VideoItem>(videos.size)
         for (video in videos) {
-            if (seen.add(video.videoId)) {
+            if (seen.add(video.stableListKey)) {
                 result.add(video)
             }
         }
@@ -56,11 +51,11 @@ object VideoItemMapper {
 
     fun merge(existing: List<VideoItem>, more: List<VideoItem>): List<VideoItem> {
         if (more.isEmpty()) return existing
-        val seen = existing.map { it.videoId }.toMutableSet()
+        val seen = existing.map { it.stableListKey }.toMutableSet()
         val result = ArrayList<VideoItem>(existing.size + more.size)
         result.addAll(existing)
         for (video in more) {
-            if (seen.add(video.videoId)) {
+            if (seen.add(video.stableListKey)) {
                 result.add(video)
             }
         }
@@ -68,46 +63,33 @@ object VideoItemMapper {
     }
 
     private fun mapItem(item: MediaItem): VideoItem? {
-
-        val videoId = item.videoId ?: return null
-
-        if (videoId.isEmpty()) return null
+        val isPlaylist = item.type == MediaItem.TYPE_PLAYLIST
+        val playlistId = item.playlistId?.trim()?.takeIf { it.isNotEmpty() }
+        val videoId = item.videoId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: playlistId
+            ?: return null
 
         val durationLabel = item.badgeText?.takeIf { it.isNotBlank() }
-
             ?: formatDurationLabel(item.durationMs)
 
         return VideoItem(
-
             videoId = videoId,
-
             title = item.title?.toString().orEmpty().ifEmpty { videoId },
-
             author = item.author,
-
             thumbnailUrl = ImageUrlHelper.resolveVideoThumbnail(
-
                 item.cardImageUrl,
-
                 item.backgroundImageUrl,
-
-                videoId
-
+                if (!isPlaylist) videoId else null
             ),
-
             durationMs = item.durationMs,
-
             isLive = item.isLive,
-
             subtitle = buildSubtitle(item),
-
             durationLabel = durationLabel.takeIf { it.isNotBlank() },
-
             channelId = item.channelId,
-            percentWatched = item.percentWatched
-
+            percentWatched = item.percentWatched,
+            isPlaylist = isPlaylist,
+            playlistId = playlistId
         )
-
     }
 
 

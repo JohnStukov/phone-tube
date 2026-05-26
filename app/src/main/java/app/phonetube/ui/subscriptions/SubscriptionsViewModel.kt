@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.phonetube.core.media.AuthRepository
+import app.phonetube.core.media.MediaErrors
 import app.phonetube.core.media.NotSignedInException
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoItemMapper
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 data class SubscriptionsUiState(
     val videos: List<VideoItem> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val error: String? = null,
@@ -43,7 +45,7 @@ class SubscriptionsViewModel(application: Application) : AndroidViewModel(applic
         }
         viewModelScope.launch {
             _state.value = _state.value.copy(
-                isLoading = true,
+                isLoading = _state.value.videos.isEmpty(),
                 isLoadingMore = false,
                 canLoadMore = false,
                 error = null,
@@ -59,9 +61,32 @@ class SubscriptionsViewModel(application: Application) : AndroidViewModel(applic
             } catch (e: NotSignedInException) {
                 _state.value = SubscriptionsUiState(needsSignIn = true)
             } catch (e: Exception) {
-                _state.value = SubscriptionsUiState(
+                _state.value = _state.value.copy(
                     isLoading = false,
-                    error = e.message ?: e.javaClass.simpleName
+                    error = MediaErrors.codeFor(e)
+                )
+            }
+        }
+    }
+
+    fun refresh() {
+        if (!authRepository.isSignedIn()) return
+        if (_state.value.isRefreshing) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isRefreshing = true, error = null)
+            try {
+                val page = repository.loadSubscriptionsFeed()
+                _state.value = _state.value.copy(
+                    videos = page.videos,
+                    isRefreshing = false,
+                    canLoadMore = page.canLoadMore
+                )
+            } catch (e: NotSignedInException) {
+                _state.value = SubscriptionsUiState(needsSignIn = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isRefreshing = false,
+                    error = MediaErrors.codeFor(e)
                 )
             }
         }
@@ -70,7 +95,7 @@ class SubscriptionsViewModel(application: Application) : AndroidViewModel(applic
     fun loadMore() {
         if (!authRepository.isSignedIn()) return
         val current = _state.value
-        if (current.isLoading || current.isLoadingMore || !current.canLoadMore) return
+        if (current.isLoading || current.isLoadingMore || current.isRefreshing || !current.canLoadMore) return
         viewModelScope.launch {
             _state.value = current.copy(isLoadingMore = true, error = null)
             try {
@@ -83,7 +108,7 @@ class SubscriptionsViewModel(application: Application) : AndroidViewModel(applic
             } catch (e: Exception) {
                 _state.value = current.copy(
                     isLoadingMore = false,
-                    error = e.message ?: e.javaClass.simpleName
+                    error = MediaErrors.codeFor(e)
                 )
             }
         }

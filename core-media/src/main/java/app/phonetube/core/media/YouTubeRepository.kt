@@ -36,6 +36,7 @@ class YouTubeRepository(context: Context) {
         get() = YouTubeServiceManager.instance().notificationsService
 
     private val channelPageLoader = ChannelPageLoader()
+    private val notificationsPager = NotificationsPagedLoader(appContext)
     private var channelStructureId: String? = null
 
     suspend fun searchVideos(query: String): List<VideoItem> = withContext(Dispatchers.IO) {
@@ -50,11 +51,17 @@ class YouTubeRepository(context: Context) {
         contentService.getSearchTagsObserve(query).blockingFirst() ?: emptyList()
     }
 
-    suspend fun loadNotifications(): List<VideoItem> = withContext(Dispatchers.IO) {
+    suspend fun loadNotifications(): List<VideoItem> =
+        loadNotificationsFeed().videos
+
+    suspend fun loadNotificationsFeed(): FeedPage = withContext(Dispatchers.IO) {
         requireSignedIn()
-        PhoneTubeMediaInit.init(appContext)
-        val group = notificationsService.getNotificationItemsObserve().blockingFirst()
-        flattenGroup(group)
+        notificationsPager.loadFirstPage()
+    }
+
+    suspend fun loadNotificationsFeedMore(): FeedPage = withContext(Dispatchers.IO) {
+        requireSignedIn()
+        notificationsPager.loadMore()
     }
 
     suspend fun loadHomeFeedPage(kind: HomeFeedKind): FeedPage = withContext(Dispatchers.IO) {
@@ -114,6 +121,13 @@ class YouTubeRepository(context: Context) {
         flattenGroup(group)
     }
 
+    suspend fun loadUserPlaylists(): List<VideoItem> = withContext(Dispatchers.IO) {
+        requireSignedIn()
+        PhoneTubeMediaInit.init(appContext)
+        val group = contentService.getPlaylistsObserve().blockingFirst()
+        flattenGroup(group)
+    }
+
     suspend fun getFormatInfo(videoId: String): MediaItemFormatInfo = withContext(Dispatchers.IO) {
         PhoneTubeMediaInit.init(appContext)
         mediaItemService.getFormatInfoObserve(videoId).blockingFirst()
@@ -141,6 +155,22 @@ class YouTubeRepository(context: Context) {
         PhoneTubeMediaInit.init(appContext)
         val meta = mediaItemService.getMetadataObserve(videoId).blockingFirst()
         enrichChannelId(mapMetadata(meta, videoId), videoId)
+    }
+
+    suspend fun resolvePlaylistStartVideoId(playlistId: String): String? = withContext(Dispatchers.IO) {
+        PhoneTubeMediaInit.init(appContext)
+        val id = playlistId.trim()
+        if (id.isEmpty()) return@withContext null
+        try {
+            mediaItemService
+                .getMetadataObserve(null, id, 0, null)
+                .blockingFirst()
+                ?.videoId
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun resolveChannelIdForVideo(videoId: String): String? = withContext(Dispatchers.IO) {
@@ -198,16 +228,23 @@ class YouTubeRepository(context: Context) {
             bannerUrl = ImageUrlHelper.normalize(header?.bannerUrl),
             handle = header?.handle,
             subscriberCount = header?.subscriberCount,
-            videoCount = videos.size,
             description = header?.description,
             videos = videos,
             tabs = if (tabs.isNotEmpty()) tabs else listOf(ChannelTab(ChannelTabIds.VIDEOS, ChannelTabIds.VIDEOS)),
             sortOptions = sortOptions,
             selectedTabId = selectedTab,
             selectedSortId = selectedSort,
-            isSubscribed = resolveIsSubscribed(canonicalId)
+            isSubscribed = resolveIsSubscribed(canonicalId),
+            canLoadMore = channelPageLoader.canLoadMoreVideos()
         )
     }
+
+    suspend fun loadMoreChannelVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+        PhoneTubeMediaInit.init(appContext)
+        channelPageLoader.loadMoreVideos()
+    }
+
+    fun channelCanLoadMore(): Boolean = channelPageLoader.canLoadMoreVideos()
 
     suspend fun setLike(videoId: String) = withContext(Dispatchers.IO) {
         requireSignedIn()

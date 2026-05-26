@@ -21,9 +21,13 @@ fun YouTubeChipRow(
 ) {
     val chips = listOf(
         HomeFeed.ALL to R.string.feed_home,
+        HomeFeed.TRENDING to R.string.feed_trending,
+        HomeFeed.NEWS to R.string.chip_news,
         HomeFeed.MUSIC to R.string.chip_music,
         HomeFeed.GAMING to R.string.chip_gaming,
-        HomeFeed.LIVE to R.string.chip_live
+        HomeFeed.SPORTS to R.string.chip_sports,
+        HomeFeed.LIVE to R.string.chip_live,
+        HomeFeed.MOVIES to R.string.chip_movies
     )
     Row(
         modifier = modifier

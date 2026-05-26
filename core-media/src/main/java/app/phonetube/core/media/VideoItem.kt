@@ -12,7 +12,15 @@ data class VideoItem(
     val channelId: String? = null,
     val channelAvatarUrl: String? = null,
     /** 0–100 desde YouTube si hay sesión; -1 si no aplica. */
-    val percentWatched: Int = -1
+    val percentWatched: Int = -1,
+    val isPlaylist: Boolean = false,
+    val playlistId: String? = null
 ) {
     val hasWatchProgress: Boolean get() = percentWatched in 1..99
+
+    val stableListKey: String
+        get() = when {
+            isPlaylist -> "pl_${playlistId ?: videoId}"
+            else -> videoId
+        }
 }

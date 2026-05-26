@@ -13,9 +13,12 @@ internal class BrowseFeedLoader(context: Context) {
         return when (feed) {
             HomeFeedKind.ALL -> pageFromHome(browse.getHome())
             HomeFeedKind.TRENDING -> loadTrending()
+            HomeFeedKind.NEWS -> pageFromHome(browse.getNews())
             HomeFeedKind.GAMING -> pageFromHome(browse.getGaming())
             HomeFeedKind.MUSIC -> pageFromHome(browse.getMusic())
+            HomeFeedKind.SPORTS -> pageFromHome(browse.getSports())
             HomeFeedKind.LIVE -> pageFromHome(browse.getLive())
+            HomeFeedKind.MOVIES -> pageFromHome(browse.getMovies())
         }
     }
 
@@ -68,16 +71,22 @@ internal class BrowseFeedLoader(context: Context) {
 enum class HomeFeedKind {
     ALL,
     TRENDING,
+    NEWS,
     MUSIC,
     GAMING,
-    LIVE;
+    SPORTS,
+    LIVE,
+    MOVIES;
 
     companion object {
         fun from(feed: String): HomeFeedKind = when (feed) {
             "TRENDING" -> TRENDING
+            "NEWS" -> NEWS
             "MUSIC" -> MUSIC
             "GAMING" -> GAMING
+            "SPORTS" -> SPORTS
             "LIVE" -> LIVE
+            "MOVIES" -> MOVIES
             else -> ALL
         }
     }

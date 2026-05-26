@@ -10,6 +10,7 @@ internal class ChannelPageLoader(
     private var sortGroups: List<MediaGroup?> = emptyList()
     private var tabGroupsById: Map<String, MediaGroup?> = emptyMap()
     private val sortReloadKeyById = mutableMapOf<String, String>()
+    private var lastVideosGroup: MediaGroup? = null
 
     fun loadHeader(channelId: String): BrowseService2.ChannelHeaderMetadata? =
         browseService2.getChannelHeaderMetadata(channelId)
@@ -47,7 +48,19 @@ internal class ChannelPageLoader(
             ChannelTabIds.VIDEOS -> loadVideosTab(channelId, sortId)
             else -> browseService2.getChannelTabVideos(tabGroupsById[tabId])
         }
+        lastVideosGroup = mediaGroup
         return VideoItemMapper.fromGroups(mediaGroup?.let { listOf(it) })
+    }
+
+    fun canLoadMoreVideos(): Boolean = !lastVideosGroup?.nextPageKey.isNullOrBlank()
+
+    fun loadMoreVideos(): List<VideoItem> {
+        val group = lastVideosGroup ?: return emptyList()
+        val key = group.nextPageKey?.trim().orEmpty()
+        if (key.isBlank()) return emptyList()
+        val continued = browseService2.continueGroup(group) ?: return emptyList()
+        lastVideosGroup = continued
+        return VideoItemMapper.fromGroups(listOf(continued))
     }
 
     private fun loadVideosTab(channelId: String, sortId: String?): MediaGroup? {

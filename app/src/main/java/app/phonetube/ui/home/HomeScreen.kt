@@ -17,10 +17,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
 import app.phonetube.core.media.AuthRepository
+import app.phonetube.core.media.ContentRegionStore
+import androidx.compose.ui.platform.LocalContext
 import app.phonetube.navigation.TopBarActions
 import app.phonetube.ui.components.YouTubeChipRow
 import app.phonetube.ui.components.YouTubeTopBar
 import app.phonetube.ui.feed.VideoFeedList
+import app.phonetube.util.resolveMediaErrorMessage
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -30,13 +33,19 @@ fun HomeScreen(
     topBarActions: TopBarActions = TopBarActions(),
     viewModel: HomeViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    val authState by AuthRepository.get(
-        androidx.compose.ui.platform.LocalContext.current
-    ).state.collectAsState()
+    val authState by AuthRepository.get(context).state.collectAsState()
+    val regionEpoch by ContentRegionStore.get(context).regionChanges.collectAsState()
 
     LaunchedEffect(authState.isSignedIn, authState.selectedAccount?.id) {
         viewModel.load(state.feed)
+    }
+
+    LaunchedEffect(regionEpoch) {
+        if (regionEpoch > 0) {
+            viewModel.refresh()
+        }
     }
 
     val pullRefreshState = rememberPullRefreshState(
@@ -65,7 +74,7 @@ fun HomeScreen(
             VideoFeedList(
                 videos = state.videos,
                 isLoading = state.isLoading && !state.isRefreshing,
-                error = state.error,
+                error = resolveMediaErrorMessage(state.error),
                 emptyMessage = stringResource(R.string.home_empty),
                 onVideoClick = onVideoClick,
                 modifier = Modifier.fillMaxSize(),

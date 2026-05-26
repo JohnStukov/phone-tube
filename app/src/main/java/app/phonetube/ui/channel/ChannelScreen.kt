@@ -1,7 +1,9 @@
 package app.phonetube.ui.channel
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -38,13 +40,18 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -54,13 +61,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.phonetube.R
 import app.phonetube.core.media.ChannelDetails
+import app.phonetube.core.media.ChannelTabIds
 import app.phonetube.ui.components.ChannelAvatar
+import app.phonetube.ui.components.PullRefreshBox
 import app.phonetube.ui.components.YouTubeAsyncImage
 import app.phonetube.ui.components.YouTubeFilterChip
 import app.phonetube.ui.components.YouTubeSubscribePill
 import app.phonetube.ui.player.resolveActionMessage
+import app.phonetube.util.resolveMediaErrorMessage
+import kotlinx.coroutines.flow.distinctUntilChanged
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ChannelScreen(
     channelId: String,
@@ -72,6 +83,11 @@ fun ChannelScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val listState = rememberLazyListState()
+    val showToolbarTitle by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 72 }
+    }
 
     LaunchedEffect(channelId, channelName) {
         if (channelId.isNotBlank()) {
@@ -91,120 +107,241 @@ fun ChannelScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                title = {
+                    if (showToolbarTitle) {
+                        Text(
+                            text = state.channel?.name.orEmpty(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
                 },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
     ) { padding ->
         when {
             state.isLoading && state.channel == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                ChannelLoadingPlaceholder(modifier = Modifier.padding(padding))
             }
             state.error != null && state.channel == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = state.error ?: "", color = MaterialTheme.colorScheme.error)
-                }
+                ChannelErrorState(
+                    message = resolveMediaErrorMessage(state.error).orEmpty(),
+                    modifier = Modifier.padding(padding)
+                )
             }
             else -> {
                 val channel = state.channel
-                LazyColumn(
+                val errorMessage = resolveMediaErrorMessage(state.error)
+                LaunchedEffect(listState, channel?.videos?.size, state.canLoadMore) {
+                    if (!state.canLoadMore) return@LaunchedEffect
+                    snapshotFlow {
+                        val info = listState.layoutInfo
+                        val total = info.totalItemsCount
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        total > 0 && lastVisible >= total - 4
+                    }
+                        .distinctUntilChanged()
+                        .collect { nearEnd ->
+                            if (nearEnd) viewModel.loadMore()
+                        }
+                }
+                PullRefreshBox(
+                    refreshing = state.isRefreshing,
+                    onRefresh = { viewModel.refresh() },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
                 ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     if (channel != null) {
-                        item {
+                        item(key = "channel_header") {
                             ChannelHeaderSection(
                                 channel = channel,
                                 onSubscribe = { viewModel.toggleSubscribe() }
                             )
                         }
-                        if (channel.tabs.size > 1) {
-                            item {
-                                ChannelTabsRow(
-                                    tabs = channel.tabs,
-                                    selectedTabId = channel.selectedTabId,
-                                    onTabSelected = { viewModel.selectTab(it) }
-                                )
-                            }
-                        }
-                        if (channel.selectedTabId == app.phonetube.core.media.ChannelTabIds.VIDEOS &&
+                        val showTabs = channel.tabs.size > 1
+                        val showSorts = channel.selectedTabId == ChannelTabIds.VIDEOS &&
                             channel.sortOptions.isNotEmpty()
-                        ) {
-                            item {
-                                ChannelSortChipsRow(
-                                    options = channel.sortOptions,
-                                    selectedSortId = channel.selectedSortId,
-                                    onSortSelected = { viewModel.selectSort(it) }
-                                )
+                        if (showTabs || showSorts) {
+                            item(key = "channel_sticky_filters") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                ) {
+                                    if (showTabs) {
+                                        ChannelTabsRow(
+                                            tabs = channel.tabs,
+                                            selectedTabId = channel.selectedTabId,
+                                            onTabSelected = { viewModel.selectTab(it) }
+                                        )
+                                    }
+                                    if (showSorts) {
+                                        ChannelSortChipsRow(
+                                            options = channel.sortOptions,
+                                            selectedSortId = channel.selectedSortId,
+                                            onSortSelected = { viewModel.selectSort(it) }
+                                        )
+                                    }
+                                    Divider(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    )
+                                }
                             }
                         }
                     }
                     if (state.isLoading) {
-                        item {
+                        item(key = "channel_tab_loading") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(24.dp),
+                                    .padding(32.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(32.dp))
                             }
                         }
-                    } else if (state.error != null) {
-                        item {
+                    } else if (errorMessage != null) {
+                        item(key = "channel_tab_error") {
                             Text(
-                                text = state.error ?: "",
+                                text = errorMessage,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(16.dp)
                             )
                         }
                     } else {
-                        val videos = channel?.videos.orEmpty()
-                        if (videos.isEmpty()) {
-                            item {
+                        val items = channel?.videos.orEmpty()
+                        val isPlaylistsTab = channel?.selectedTabId == ChannelTabIds.PLAYLISTS
+                        if (items.isEmpty()) {
+                            item(key = "channel_empty") {
                                 Text(
-                                    text = stringResource(R.string.channel_videos_empty),
-                                    modifier = Modifier.padding(16.dp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = stringResource(
+                                        if (isPlaylistsTab) {
+                                            R.string.channel_playlists_empty
+                                        } else {
+                                            R.string.channel_videos_empty
+                                        }
+                                    ),
+                                    modifier = Modifier.padding(24.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge
                                 )
                             }
                         } else {
-                            items(videos, key = { it.videoId }) { video ->
-                                ChannelVideoRow(
-                                    video = video,
-                                    onClick = { onVideoClick(video.videoId, video.isLive) }
-                                )
-                                Divider(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                )
+                            items(items, key = { it.stableListKey }) { item ->
+                                if (item.isPlaylist || isPlaylistsTab) {
+                                    ChannelPlaylistRow(
+                                        playlist = item,
+                                        onClick = { viewModel.openItem(item, onVideoClick) }
+                                    )
+                                } else {
+                                    ChannelVideoRow(
+                                        video = item,
+                                        onClick = { viewModel.openItem(item, onVideoClick) }
+                                    )
+                                }
+                            }
+                            if (state.isLoadingMore) {
+                                item(key = "channel_loading_more") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ChannelLoadingPlaceholder(modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(128.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        )
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .offset(y = (-36).dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+        }
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.55f)
+                    .height(20.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.35f)
+                    .height(14.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(32.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelErrorState(message: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(24.dp)
+        )
     }
 }
 
@@ -221,12 +358,13 @@ private fun ChannelHeaderSection(
         showExpand -> description.take(120).trimEnd() + "…"
         else -> description
     }
+    val surface = MaterialTheme.colorScheme.surface
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp)
+                .height(128.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             channel.bannerUrl?.let { url ->
@@ -237,52 +375,83 @@ private fun ChannelHeaderSection(
                     contentScale = ContentScale.Crop
                 )
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.55f to Color.Transparent,
+                                1f to surface
+                            )
+                        )
+                    )
+            )
         }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .offset(y = (-28).dp),
+                .offset(y = (-40).dp),
             verticalAlignment = Alignment.Bottom
         ) {
             ChannelAvatar(
                 name = channel.name,
-                size = 80.dp,
+                size = 88.dp,
                 imageUrl = channel.avatarUrl,
-                modifier = Modifier.clip(CircleShape)
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .border(3.dp, surface, CircleShape)
             )
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(top = 8.dp)
+                .padding(top = 4.dp)
         ) {
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            channel.handle?.let { handle ->
-                Text(
-                    text = handle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-            val stats = channelStatsText(channel)
-            if (stats.isNotBlank()) {
-                Text(
-                    text = stats,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = channel.name,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    channel.handle?.let { handle ->
+                        Text(
+                            text = handle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    val stats = channelStatsText(channel)
+                    if (stats.isNotBlank()) {
+                        Text(
+                            text = stats,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+                YouTubeSubscribePill(
+                    subscribed = channel.isSubscribed,
+                    label = stringResource(
+                        if (channel.isSubscribed) R.string.subscribed else R.string.subscribe
+                    ),
+                    onClick = onSubscribe,
+                    fullWidth = false
                 )
             }
             descriptionText?.let { text ->
-                Row(modifier = Modifier.padding(top = 8.dp)) {
+                Row(modifier = Modifier.padding(top = 10.dp)) {
                     Text(
                         text = text,
                         style = MaterialTheme.typography.bodyMedium,
@@ -292,41 +461,23 @@ private fun ChannelHeaderSection(
                     if (showExpand) {
                         Text(
                             text = stringResource(R.string.channel_description_more),
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .padding(start = 4.dp)
-                                .clickable { descriptionExpanded = true },
+                                .clickable { descriptionExpanded = true }
                         )
                     }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
-            YouTubeSubscribePill(
-                subscribed = channel.isSubscribed,
-                label = stringResource(
-                    if (channel.isSubscribed) R.string.subscribed else R.string.subscribe
-                ),
-                onClick = onSubscribe,
-                fullWidth = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun channelStatsText(channel: ChannelDetails): String {
-    val subs = channel.subscriberCount?.trim().orEmpty()
-    val count = channel.videoCount
-    return when {
-        subs.isNotEmpty() && count > 0 ->
-            stringResource(R.string.channel_stats, subs, count)
-        subs.isNotEmpty() -> subs
-        count > 0 -> stringResource(R.string.channel_video_count, count)
-        else -> ""
-    }
-}
+private fun channelStatsText(channel: ChannelDetails): String =
+    channel.subscriberCount?.trim().orEmpty()
 
 @Composable
 private fun ChannelTabsRow(
@@ -340,14 +491,14 @@ private fun ChannelTabsRow(
         selectedTabIndex = selectedIndex,
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = onSurface,
-        edgePadding = 12.dp,
+        edgePadding = 16.dp,
         divider = {},
         indicator = { positions ->
             if (positions.isNotEmpty()) {
                 TabRowDefaults.Indicator(
                     modifier = Modifier.tabIndicatorOffset(positions[selectedIndex]),
-                    color = onSurface,
-                    height = 2.dp
+                    color = MaterialTheme.colorScheme.primary,
+                    height = 3.dp
                 )
             }
         }
@@ -374,11 +525,11 @@ private fun ChannelTabsRow(
 
 @Composable
 private fun channelTabLabel(tabId: String): String = when (tabId) {
-    app.phonetube.core.media.ChannelTabIds.VIDEOS -> stringResource(R.string.channel_tab_videos)
-    app.phonetube.core.media.ChannelTabIds.SHORTS -> stringResource(R.string.channel_tab_shorts)
-    app.phonetube.core.media.ChannelTabIds.PLAYLISTS -> stringResource(R.string.channel_tab_playlists)
-    app.phonetube.core.media.ChannelTabIds.LIVE -> stringResource(R.string.channel_tab_live)
-    app.phonetube.core.media.ChannelTabIds.HOME -> stringResource(R.string.channel_tab_home)
+    ChannelTabIds.VIDEOS -> stringResource(R.string.channel_tab_videos)
+    ChannelTabIds.SHORTS -> stringResource(R.string.channel_tab_shorts)
+    ChannelTabIds.PLAYLISTS -> stringResource(R.string.channel_tab_playlists)
+    ChannelTabIds.LIVE -> stringResource(R.string.channel_tab_live)
+    ChannelTabIds.HOME -> stringResource(R.string.channel_tab_home)
     else -> tabId
 }
 
@@ -392,7 +543,7 @@ private fun ChannelSortChipsRow(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         options.forEach { option ->

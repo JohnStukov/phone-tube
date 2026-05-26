@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.phonetube.core.media.VideoItem
+import app.phonetube.core.media.MediaErrors
 import app.phonetube.core.media.YouTubeRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -75,7 +76,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = e.message ?: e.javaClass.simpleName
+                    error = MediaErrors.codeFor(e)
                 )
             }
         }

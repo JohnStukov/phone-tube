@@ -24,6 +24,12 @@
     <string name="chip_music">Música</string>
     <string name="chip_gaming">Videojuegos</string>
     <string name="chip_live">En directo</string>
+    <string name="chip_news">Noticias</string>
+    <string name="chip_sports">Deportes</string>
+    <string name="chip_movies">Películas</string>
+    <string name="settings_content_region">Región del contenido</string>
+    <string name="settings_content_region_auto">Automática (dispositivo)</string>
+    <string name="settings_content_region_hint">Afecta inicio, tendencias y temas. Inicio se recarga al cambiar.</string>
     <string name="nav_home">Inicio</string>
     <string name="nav_shorts">Shorts</string>
     <string name="nav_create">Crear</string>
@@ -128,6 +134,14 @@
     <string name="sb_category_preview">Avance / resumen</string>
     <string name="sb_category_highlight">Destacado</string>
     <string name="sb_category_filler">Relleno</string>
+
+    <string name="error_network">Revisa tu conexión e inténtalo de nuevo</string>
+    <string name="error_generic">Algo salió mal. Inténtalo de nuevo.</string>
+    <string name="error_playlist_unavailable">No se pudo abrir esta lista</string>
+    <string name="channel_playlists_empty">Este canal no tiene listas</string>
+    <string name="library_playlists">Listas de reproducción</string>
+    <string name="library_playlists_empty">Sin listas</string>
+    <string name="library_playlists_sign_in">Inicia sesión para ver tus listas</string>
 
     <string name="mini_player_close">Cerrar reproductor mini</string>
     <string name="mini_player_play_pause">Reproducir o pausar</string>

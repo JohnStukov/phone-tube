@@ -13,6 +13,7 @@ object PhoneTubeMediaInit {
         synchronized(this) {
             if (initialized) return
             GlobalPreferences.instance(context.applicationContext)
+            YouTubeServiceManager.instance().signInService.ensureAccountsRestored()
             YouTubeServiceManager.instance().refreshCacheIfNeeded()
             initialized = true
         }
