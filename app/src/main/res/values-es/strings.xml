@@ -11,6 +11,8 @@
     <string name="search_empty">Sin resultados</string>
     <string name="clear">Borrar</string>
     <string name="cast_unavailable">Transmitir no disponible en este dispositivo</string>
+    <string name="cast_failed">No se pudo iniciar la transmisión</string>
+    <string name="cast_no_playback">Reproduce un video antes de transmitir</string>
     <string name="notifications_empty">Sin notificaciones</string>
     <string name="notifications_sign_in">Inicia sesión para ver tus notificaciones</string>
     <string name="cast">Transmitir</string>
@@ -32,7 +34,6 @@
     <string name="settings_content_region_hint">Afecta inicio, tendencias y temas. Inicio se recarga al cambiar.</string>
     <string name="nav_home">Inicio</string>
     <string name="nav_shorts">Shorts</string>
-    <string name="nav_create">Crear</string>
     <string name="nav_subscriptions">Suscripciones</string>
     <string name="nav_library">Tú</string>
     <string name="tab_shorts_title">Shorts</string>
@@ -51,7 +52,8 @@
     <string name="comments">Comentarios</string>
     <string name="related_videos">Videos relacionados</string>
     <string name="live_badge">EN DIRECTO</string>
-    <string name="playback_live_unavailable">Los directos y las emisiones no están disponibles por ahora</string>
+    <string name="playback_live_unavailable">No se pudo cargar la emisión</string>
+    <string name="go_to_live">Ir al directo</string>
     <string name="sponsor_segments_count">%1$d segmentos SponsorBlock</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="sign_in_title">Iniciar sesión</string>
@@ -123,6 +125,7 @@
     <string name="settings_audio_manual">Elegir idioma</string>
     <string name="audio_track">Pista de audio</string>
     <string name="audio_track_auto">Automático</string>
+    <string name="audio_track_original">Original</string>
     <string name="audio_track_unavailable">Este video no tiene otras pistas de audio</string>
 
     <string name="sb_category_sponsor">Patrocinio</string>
@@ -142,6 +145,21 @@
     <string name="library_playlists">Listas de reproducción</string>
     <string name="library_playlists_empty">Sin listas</string>
     <string name="library_playlists_sign_in">Inicia sesión para ver tus listas</string>
+    <string name="library_watch_later">Ver más tarde</string>
+    <string name="library_watch_later_empty">No hay videos en Ver más tarde</string>
+    <string name="library_liked">Videos que te gustaron</string>
+    <string name="library_liked_empty">Aún no hay videos con me gusta</string>
+    <string name="notification_marked_read">Notificación descartada</string>
+    <string name="offline_cached_data">Mostrando datos guardados (sin conexión)</string>
+    <string name="search_recent">Búsquedas recientes</string>
+    <string name="network_offline">Sin conexión a internet</string>
+    <string name="network_online">Conexión restaurada</string>
+    <string name="action_pending_sync">La acción se sincronizará al volver en línea</string>
+    <string name="player_reconnecting">Reconectando…</string>
+    <string name="cast_connected">Enviando a %1$s</string>
+    <string name="cast_connecting">Conectando Cast…</string>
+    <string name="cast_disconnected">Cast desconectado</string>
+    <string name="cast_disconnect">Desconectar</string>
 
     <string name="mini_player_close">Cerrar reproductor mini</string>
     <string name="mini_player_play_pause">Reproducir o pausar</string>

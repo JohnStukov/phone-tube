@@ -12,6 +12,8 @@ import app.phonetube.core.media.VideoItemMapper
 import app.phonetube.core.media.VideoMetadata
 import app.phonetube.core.media.YouTubeRepository
 import app.phonetube.ui.player.resolveActionMessage
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,8 +41,11 @@ data class ShortsUiState(
     val showComments: Boolean = false
 )
 
-class ShortsViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = YouTubeRepository(application)
+@HiltViewModel
+class ShortsViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository
+) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ShortsUiState(isLoading = true))
     val state: StateFlow<ShortsUiState> = _state.asStateFlow()
 
@@ -71,6 +76,11 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
             detailsLoading = true,
             showComments = false
         )
+        val nextVideoId = _state.value.videos
+            .dropWhile { it.videoId != videoId }
+            .drop(1)
+            .firstOrNull()
+            ?.videoId
         viewModelScope.launch {
             try {
                 val metadata = repository.getVideoMetadata(videoId)
@@ -80,6 +90,11 @@ class ShortsViewModel(application: Application) : AndroidViewModel(application) 
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(detailsLoading = false)
+            }
+        }
+        if (!nextVideoId.isNullOrBlank()) {
+            viewModelScope.launch {
+                runCatching { repository.prefetchVideoFormat(nextVideoId) }
             }
         }
     }

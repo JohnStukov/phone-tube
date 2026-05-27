@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 
 import androidx.compose.runtime.Composable
 
@@ -20,6 +22,8 @@ import androidx.compose.runtime.getValue
 
 import androidx.compose.runtime.mutableStateOf
 
+import androidx.compose.runtime.remember
+
 import androidx.compose.runtime.saveable.rememberSaveable
 
 import androidx.compose.runtime.setValue
@@ -27,9 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 
 import androidx.compose.ui.platform.LocalContext
-import android.widget.Toast
 
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 
 import androidx.navigation.NavHostController
 
@@ -47,7 +50,9 @@ import androidx.navigation.compose.rememberNavController
 
 import androidx.navigation.navArgument
 
+import app.phonetube.PhoneTubeApp
 import app.phonetube.R
+import app.phonetube.core.media.network.ConnectivityMonitor
 
 import app.phonetube.navigation.BottomTab
 
@@ -94,13 +99,26 @@ fun PhoneTubeNavHost(
 
     modifier: Modifier = Modifier,
 
-    playbackHost: PlaybackHostViewModel = viewModel()
+    playbackHost: PlaybackHostViewModel = hiltViewModel()
 
 ) {
 
     val navController = rememberNavController()
 
     val context = LocalContext.current
+    val castController = (context.applicationContext as PhoneTubeApp).castController
+    val connectivity = remember { ConnectivityMonitor.get(context) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isOnline by connectivity.isOnline.collectAsState()
+    var wasOnline by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(isOnline) {
+        if (!isOnline) {
+            snackbarHostState.showSnackbar(context.getString(R.string.network_offline))
+        } else if (!wasOnline) {
+            snackbarHostState.showSnackbar(context.getString(R.string.network_online))
+        }
+        wasOnline = isOnline
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
@@ -143,29 +161,20 @@ fun PhoneTubeNavHost(
 
         onSearchClick = { navController.navigate(Routes.SEARCH) },
 
-        onCastClick = { MediaCastHelper.openCastPicker(context) },
+        onCastClick = { MediaCastHelper.openCastPicker(context, castController) },
 
         onNotificationsClick = { navController.navigate(Routes.NOTIFICATIONS) }
 
     )
 
-    val liveUnavailableMessage = context.getString(R.string.playback_live_unavailable)
     val openPlayer: (String, Boolean) -> Unit = { videoId, isLive ->
-        if (isLive) {
-            Toast.makeText(context, liveUnavailableMessage, Toast.LENGTH_SHORT).show()
-        } else {
-            navController.navigate(Routes.player(videoId, false))
-        }
+        navController.navigate(Routes.player(videoId, isLive))
     }
 
     val expandMiniPlayer: () -> Unit = {
         playbackSession?.let { session ->
-            if (session.isLive) {
-                Toast.makeText(context, liveUnavailableMessage, Toast.LENGTH_SHORT).show()
-                return@let
-            }
             playbackHost.setFullMode()
-            navController.navigate(Routes.player(session.videoId, false)) {
+            navController.navigate(Routes.player(session.videoId, session.isLive)) {
                 launchSingleTop = true
             }
         }
@@ -178,6 +187,8 @@ fun PhoneTubeNavHost(
         Scaffold(
 
             modifier = Modifier.fillMaxSize(),
+
+            snackbarHost = { SnackbarHost(snackbarHostState) },
 
             bottomBar = {
 

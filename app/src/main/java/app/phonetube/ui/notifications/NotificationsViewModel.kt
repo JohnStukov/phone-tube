@@ -8,6 +8,8 @@ import app.phonetube.core.media.NotSignedInException
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoItemMapper
 import app.phonetube.core.media.YouTubeRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,11 +22,15 @@ data class NotificationsUiState(
     val isLoadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val error: String? = null,
+    val showingCachedData: Boolean = false,
     val needsSignIn: Boolean = false
 )
 
-class NotificationsViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = YouTubeRepository(application)
+@HiltViewModel
+class NotificationsViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository
+) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(NotificationsUiState(isLoading = true))
     val state: StateFlow<NotificationsUiState> = _state.asStateFlow()
 
@@ -45,7 +51,8 @@ class NotificationsViewModel(application: Application) : AndroidViewModel(applic
                 _state.value = NotificationsUiState(
                     videos = page.videos,
                     isLoading = false,
-                    canLoadMore = page.canLoadMore
+                    canLoadMore = page.canLoadMore,
+                    showingCachedData = page.isFromCache
                 )
             } catch (e: NotSignedInException) {
                 _state.value = NotificationsUiState(needsSignIn = true, isLoading = false)
@@ -68,7 +75,8 @@ class NotificationsViewModel(application: Application) : AndroidViewModel(applic
                     videos = page.videos,
                     isLoading = false,
                     isRefreshing = false,
-                    canLoadMore = page.canLoadMore
+                    canLoadMore = page.canLoadMore,
+                    showingCachedData = page.isFromCache
                 )
             } catch (e: NotSignedInException) {
                 _state.value = NotificationsUiState(needsSignIn = true, isRefreshing = false)
@@ -78,6 +86,16 @@ class NotificationsViewModel(application: Application) : AndroidViewModel(applic
                     error = MediaErrors.codeFor(e)
                 )
             }
+        }
+    }
+
+    fun onVideoOpened(videoId: String) {
+        viewModelScope.launch {
+            runCatching { repository.dismissNotification(videoId) }
+            val current = _state.value
+            _state.value = current.copy(
+                videos = current.videos.filter { it.videoId != videoId }
+            )
         }
     }
 

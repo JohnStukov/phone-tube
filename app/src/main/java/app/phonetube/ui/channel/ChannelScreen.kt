@@ -58,7 +58,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 import app.phonetube.core.media.ChannelDetails
 import app.phonetube.core.media.ChannelTabIds
@@ -79,7 +79,7 @@ fun ChannelScreen(
     onBack: () -> Unit,
     onVideoClick: (videoId: String, isLive: Boolean) -> Unit,
     onSignIn: () -> Unit,
-    viewModel: ChannelViewModel = viewModel()
+    viewModel: ChannelViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current

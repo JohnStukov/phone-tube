@@ -2,10 +2,16 @@ package app.phonetube.ui.player
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import app.phonetube.cast.PhoneTubeCastController
+import app.phonetube.core.media.YouTubeRepository
+import app.phonetube.core.playback.CastPlaybackInfo
+import app.phonetube.core.playback.CastPlaybackSource
 import app.phonetube.core.playback.PhonePlayerController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.update
 
 enum class PlayerDisplayMode {
@@ -25,16 +31,40 @@ data class ActivePlayback(
     val offsetY: Float = 0f
 )
 
-class PlaybackHostViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class PlaybackHostViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository,
+    private val castController: PhoneTubeCastController
+) : AndroidViewModel(application) {
 
     private var controller: PhonePlayerController? = null
     private val _session = MutableStateFlow<ActivePlayback?>(null)
     val session: StateFlow<ActivePlayback?> = _session.asStateFlow()
 
+    init {
+        castController.registerPlaybackSource(object : CastPlaybackSource {
+            override fun playbackInfo(): CastPlaybackInfo? {
+                val session = _session.value ?: return null
+                return getOrCreateController().getCastPlaybackInfo(session.title, session.author)
+            }
+
+            override fun pauseLocal() {
+                controller?.pause()
+            }
+
+            override fun resumeLocal(positionMs: Long) {
+                val active = controller ?: return
+                active.seekTo(positionMs)
+                active.getPlayer().playWhenReady = true
+            }
+        })
+    }
+
     fun getOrCreateController(): PhonePlayerController {
         val existing = controller
         if (existing != null) return existing
-        return PhonePlayerController(getApplication()).also { controller = it }
+        return PhonePlayerController(getApplication(), repository).also { controller = it }
     }
 
     fun onEnterPlayerScreen(
@@ -110,6 +140,7 @@ class PlaybackHostViewModel(application: Application) : AndroidViewModel(applica
     }
 
     override fun onCleared() {
+        castController.registerPlaybackSource(null)
         stop()
         super.onCleared()
     }

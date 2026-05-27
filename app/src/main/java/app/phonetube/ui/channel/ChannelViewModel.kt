@@ -9,6 +9,8 @@ import app.phonetube.core.media.NotSignedInException
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoItemMapper
 import app.phonetube.core.media.YouTubeRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,8 +28,11 @@ data class ChannelUiState(
         get() = channel?.canLoadMore == true && !isLoading && !isLoadingMore && !isRefreshing
 }
 
-class ChannelViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = YouTubeRepository(application)
+@HiltViewModel
+class ChannelViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository
+) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChannelUiState())
     val state: StateFlow<ChannelUiState> = _state.asStateFlow()
 

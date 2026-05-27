@@ -31,7 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 import app.phonetube.core.media.AccountInfo
 import app.phonetube.core.media.AuthState
@@ -53,8 +53,8 @@ fun LibraryScreen(
     onOpenSettings: () -> Unit,
     onOpenAccount: () -> Unit = {},
     topBarActions: TopBarActions = TopBarActions(),
-    libraryViewModel: LibraryViewModel = viewModel(),
-    authViewModel: AuthViewModel = viewModel()
+    libraryViewModel: LibraryViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val state by libraryViewModel.state.collectAsState()
     val context = LocalContext.current
@@ -78,6 +78,17 @@ fun LibraryScreen(
         )
 
         Divider()
+
+        if (state.auth.isSignedIn && state.showingCachedData) {
+            Text(
+                text = stringResource(R.string.offline_cached_data),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
 
         Box(modifier = Modifier.weight(1f)) {
             if (!state.auth.isSignedIn) {
@@ -120,6 +131,78 @@ fun LibraryScreen(
                                     }
                                 } else {
                                     items(state.historyVideos, key = { it.stableListKey }) { video ->
+                                        YouTubeVideoCard(
+                                            video = video,
+                                            onClick = {
+                                                libraryViewModel.openItem(
+                                                    video,
+                                                    onOpenVideo = onVideoClick,
+                                                    onPlaylistUnavailable = {
+                                                        Toast.makeText(
+                                                            context,
+                                                            R.string.error_playlist_unavailable,
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                                item(key = "watch_later_title") {
+                                    Text(
+                                        text = stringResource(R.string.library_watch_later),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                                if (state.watchLaterVideos.isEmpty()) {
+                                    item(key = "watch_later_empty") {
+                                        Text(
+                                            text = stringResource(R.string.library_watch_later_empty),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                } else {
+                                    items(state.watchLaterVideos, key = { it.stableListKey }) { video ->
+                                        YouTubeVideoCard(
+                                            video = video,
+                                            onClick = {
+                                                libraryViewModel.openItem(
+                                                    video,
+                                                    onOpenVideo = onVideoClick,
+                                                    onPlaylistUnavailable = {
+                                                        Toast.makeText(
+                                                            context,
+                                                            R.string.error_playlist_unavailable,
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                                item(key = "liked_title") {
+                                    Text(
+                                        text = stringResource(R.string.library_liked),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+                                if (state.likedVideos.isEmpty()) {
+                                    item(key = "liked_empty") {
+                                        Text(
+                                            text = stringResource(R.string.library_liked_empty),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                } else {
+                                    items(state.likedVideos, key = { it.stableListKey }) { video ->
                                         YouTubeVideoCard(
                                             video = video,
                                             onClick = {

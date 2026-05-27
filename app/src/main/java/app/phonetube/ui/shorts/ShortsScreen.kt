@@ -70,7 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoMetadata
@@ -88,7 +88,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Composable
 fun ShortsScreen(
     onChannelClick: (channelId: String, channelName: String?) -> Unit = { _, _ -> },
-    viewModel: ShortsViewModel = viewModel()
+    viewModel: ShortsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     KeepScreenOnEffect(enabled = true)

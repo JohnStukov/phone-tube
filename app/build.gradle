@@ -1,6 +1,8 @@
 apply from: gradle.ext.sharedModulesConstants
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'kotlin-kapt'
+apply plugin: 'dagger.hilt.android.plugin'
 
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
@@ -35,8 +37,8 @@ android {
         applicationId 'app.phonetube'
         minSdkVersion 21
         targetSdkVersion project.ext.compileSdkVersion
-        versionCode 2
-        versionName '1.0.1'
+        versionCode 3
+        versionName '1.0.2'
         multiDexEnabled true
     }
 
@@ -79,6 +81,7 @@ dependencies {
     implementation project(':j2v8')
     implementation project(':exoplayer-library-core')
     implementation project(':exoplayer-library-ui')
+    implementation project(':exoplayer-extension-cast')
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$kotlinxVersion"
@@ -94,8 +97,14 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2'
     implementation 'androidx.navigation:navigation-compose:2.7.6'
+    implementation 'androidx.hilt:hilt-navigation-compose:1.1.0'
+
+    implementation 'com.google.dagger:hilt-android:2.48'
+    kapt 'com.google.dagger:hilt-compiler:2.48'
 
     implementation "androidx.core:core-ktx:$kotlinCoreXVersion"
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.mediarouter:mediarouter:1.6.0'
     implementation "com.google.android.material:material:$materialVersion"
     implementation "androidx.multidex:multidex:$multiDexVersion"
 
@@ -103,4 +112,8 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
+}
+
+kapt {
+    correctErrorTypes true
 }

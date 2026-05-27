@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.phonetube.R
+import app.phonetube.core.media.MediaErrors
 import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
@@ -62,6 +63,9 @@ fun resolveActionMessage(context: Context, message: String?): String? {
         "comment_empty" -> context.getString(R.string.comment_empty)
         "comments_post_unavailable" -> context.getString(R.string.comments_post_unavailable)
         "comments_not_ready" -> context.getString(R.string.comments_not_ready)
+        "action_pending_sync" -> context.getString(R.string.action_pending_sync)
+        MediaErrors.NETWORK -> context.getString(R.string.error_network)
+        MediaErrors.GENERIC -> context.getString(R.string.error_generic)
         else -> message
     }
 }

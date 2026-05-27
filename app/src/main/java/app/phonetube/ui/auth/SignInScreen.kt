@@ -36,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,7 +44,7 @@ import app.phonetube.R
 fun SignInScreen(
     onBack: () -> Unit,
     onSignedIn: () -> Unit,
-    viewModel: AuthViewModel = viewModel()
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
     val signInState by viewModel.signInState.collectAsState()
     val context = LocalContext.current

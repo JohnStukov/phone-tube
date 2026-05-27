@@ -1,6 +1,8 @@
 package app.phonetube.core.media
 
 import android.content.Context
+import app.phonetube.core.media.cache.CacheKeys
+import app.phonetube.core.media.cache.PhoneTubeCacheCoordinator
 import com.liskovsoft.mediaserviceinterfaces.CommentsService
 import com.liskovsoft.mediaserviceinterfaces.ContentService
 import com.liskovsoft.mediaserviceinterfaces.MediaItemService
@@ -37,13 +39,37 @@ class YouTubeRepository(context: Context) {
 
     private val channelPageLoader = ChannelPageLoader()
     private val notificationsPager = NotificationsPagedLoader(appContext)
+    private val librarySections = LibrarySectionLoader()
+    private val cache = PhoneTubeCacheCoordinator.get(appContext)
+    private val subscriptionsCacheKey = "SUBSCRIPTIONS"
+    private val notificationsCacheKey = "NOTIFICATIONS"
     private var channelStructureId: String? = null
+    private var notificationSourcesByVideoId: Map<String, MediaItem> = emptyMap()
 
-    suspend fun searchVideos(query: String): List<VideoItem> = withContext(Dispatchers.IO) {
-        PhoneTubeMediaInit.init(appContext)
-        val groups = contentService.getSearchObserve(query).blockingFirst()
-        flattenGroups(groups)
+    suspend fun searchVideos(query: String): CachedListResult = withContext(Dispatchers.IO) {
+        val normalized = CacheKeys.normalizeSearchQuery(query)
+        val cacheKey = CacheKeys.searchResults(normalized)
+        runCatching {
+            PhoneTubeMediaInit.init(appContext)
+            val groups = contentService.getSearchObserve(query.trim()).blockingFirst()
+            val videos = flattenGroups(groups)
+            if (videos.isNotEmpty()) {
+                cache.saveVideoList(cacheKey, videos)
+                cache.recordSearchQuery(query.trim())
+            }
+            CachedListResult(items = videos, isFromCache = false)
+        }.getOrElse { error ->
+            cache.loadVideoList(cacheKey, allowStale = false)
+                ?: cache.loadVideoList(cacheKey)
+                ?: throw error
+        }
     }
+
+    suspend fun recentSearchQueries(limit: Int = 10): List<String> = withContext(Dispatchers.IO) {
+        cache.recentSearchQueries(limit)
+    }
+
+    suspend fun invalidateLocalCache() = cache.invalidateAll()
 
     suspend fun searchSuggestions(query: String): List<String> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
@@ -56,16 +82,47 @@ class YouTubeRepository(context: Context) {
 
     suspend fun loadNotificationsFeed(): FeedPage = withContext(Dispatchers.IO) {
         requireSignedIn()
-        notificationsPager.loadFirstPage()
+        runCatching {
+            notificationsPager.loadFirstPage()
+        }.onSuccess { page ->
+            notificationSourcesByVideoId = page.notificationSources
+            if (page.videos.isNotEmpty()) {
+                cache.saveByKey(notificationsCacheKey, page)
+            }
+        }.getOrElse { error ->
+            cache.loadByKey(notificationsCacheKey, allowStale = false)
+                ?: cache.loadByKey(notificationsCacheKey)
+                ?: throw error
+        }
     }
 
     suspend fun loadNotificationsFeedMore(): FeedPage = withContext(Dispatchers.IO) {
         requireSignedIn()
-        notificationsPager.loadMore()
+        notificationsPager.loadMore().also { page ->
+            notificationSourcesByVideoId = notificationSourcesByVideoId + page.notificationSources
+        }
+    }
+
+    suspend fun dismissNotification(videoId: String) = withContext(Dispatchers.IO) {
+        requireSignedIn()
+        PhoneTubeMediaInit.init(appContext)
+        val item = notificationSourcesByVideoId[videoId] ?: return@withContext
+        notificationsService.hideNotification(item)
+        notificationSourcesByVideoId = notificationSourcesByVideoId - videoId
     }
 
     suspend fun loadHomeFeedPage(kind: HomeFeedKind): FeedPage = withContext(Dispatchers.IO) {
-        feedLoader.loadFirstPage(kind)
+        runCatching {
+            feedLoader.loadFirstPage(kind)
+        }.onSuccess { page ->
+            if (page.videos.isNotEmpty()) {
+                cache.saveFeed(kind, page)
+            }
+        }.getOrElse { error ->
+            cache.loadByKey(kind.name, allowStale = false)
+                ?: cache.loadFeed(kind)
+                ?: throw error
+        }
     }
 
     suspend fun loadHomeFeedMore(nextPageKey: String, groupType: Int): FeedPage =
@@ -90,7 +147,17 @@ class YouTubeRepository(context: Context) {
 
     suspend fun loadSubscriptionsFeed(): FeedPage = withContext(Dispatchers.IO) {
         requireSignedIn()
-        subscriptionsPager.loadFirstPage()
+        runCatching {
+            subscriptionsPager.loadFirstPage()
+        }.onSuccess { page ->
+            if (page.videos.isNotEmpty()) {
+                cache.saveByKey(subscriptionsCacheKey, page)
+            }
+        }.getOrElse { error ->
+            cache.loadByKey(subscriptionsCacheKey, allowStale = false)
+                ?: cache.loadByKey(subscriptionsCacheKey)
+                ?: throw error
+        }
     }
 
     suspend fun loadSubscriptionsFeedMore(): FeedPage = withContext(Dispatchers.IO) {
@@ -112,20 +179,62 @@ class YouTubeRepository(context: Context) {
     suspend fun loadShortsVideos(): List<VideoItem> =
         loadShortsFeed().videos
 
-    suspend fun loadHistoryVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+    suspend fun loadHistoryVideos(): CachedListResult = withContext(Dispatchers.IO) {
         if (!AuthRepository.get(appContext).isSignedIn()) {
             throw NotSignedInException()
         }
-        PhoneTubeMediaInit.init(appContext)
-        val group = contentService.getHistoryObserve().blockingFirst()
-        flattenGroup(group)
+        loadLibrarySection(CacheKeys.LIBRARY_HISTORY) {
+            PhoneTubeMediaInit.init(appContext)
+            val group = contentService.getHistoryObserve().blockingFirst()
+            flattenGroup(group)
+        }
     }
 
-    suspend fun loadUserPlaylists(): List<VideoItem> = withContext(Dispatchers.IO) {
+    suspend fun loadUserPlaylists(): CachedListResult = withContext(Dispatchers.IO) {
         requireSignedIn()
-        PhoneTubeMediaInit.init(appContext)
-        val group = contentService.getPlaylistsObserve().blockingFirst()
-        flattenGroup(group)
+        loadLibrarySection(CacheKeys.LIBRARY_PLAYLISTS) {
+            PhoneTubeMediaInit.init(appContext)
+            val group = contentService.getPlaylistsObserve().blockingFirst()
+            flattenGroup(group)
+        }
+    }
+
+    suspend fun loadWatchLaterVideos(): CachedListResult = withContext(Dispatchers.IO) {
+        requireSignedIn()
+        loadLibrarySection(CacheKeys.LIBRARY_WATCH_LATER) {
+            PhoneTubeMediaInit.init(appContext)
+            librarySections.loadWatchLater()
+        }
+    }
+
+    suspend fun loadLikedVideos(): CachedListResult = withContext(Dispatchers.IO) {
+        requireSignedIn()
+        loadLibrarySection(CacheKeys.LIBRARY_LIKED) {
+            PhoneTubeMediaInit.init(appContext)
+            librarySections.loadLikedVideos()
+        }
+    }
+
+    private suspend fun loadLibrarySection(
+        cacheKey: String,
+        loader: suspend () -> List<VideoItem>
+    ): CachedListResult {
+        return runCatching {
+            val videos = loader()
+            if (videos.isNotEmpty()) {
+                cache.saveVideoList(cacheKey, videos)
+            }
+            CachedListResult(items = videos, isFromCache = false)
+        }.getOrElse { error ->
+            cache.loadVideoList(cacheKey, allowStale = false)
+                ?: cache.loadVideoList(cacheKey)
+                ?: throw error
+        }
+    }
+
+    suspend fun prefetchVideoFormat(videoId: String) = withContext(Dispatchers.IO) {
+        if (videoId.isBlank()) return@withContext
+        runCatching { getFormatInfo(videoId) }
     }
 
     suspend fun getFormatInfo(videoId: String): MediaItemFormatInfo = withContext(Dispatchers.IO) {

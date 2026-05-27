@@ -4,11 +4,17 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.phonetube.core.media.CommentPostException
+import app.phonetube.core.media.MediaErrors
 import app.phonetube.core.media.NotSignedInException
 import app.phonetube.core.media.VideoComment
+import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.PlaybackRestrictions
 import app.phonetube.core.media.VideoMetadata
 import app.phonetube.core.media.YouTubeRepository
+import app.phonetube.core.media.network.ConnectivityMonitor
+import app.phonetube.core.media.pending.PendingActionType
+import app.phonetube.core.media.pending.PendingActionsRepository
+import org.json.JSONObject
 import app.phonetube.core.media.AudioLanguageOptionsHelper
 import app.phonetube.core.media.AudioTrackOption
 import app.phonetube.core.media.StreamQualityOption
@@ -23,6 +29,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 
 data class PlayerUiState(
@@ -43,7 +51,11 @@ data class PlayerUiState(
     val playbackSpeed: Float = 1f,
     val captionSize: CaptionSize = CaptionSize.MEDIUM,
     val autoplayEnabled: Boolean = true,
-    val showSettings: Boolean = false
+    val showSettings: Boolean = false,
+    val actionInProgress: Boolean = false,
+    val pendingSyncCount: Int = 0,
+    val isBuffering: Boolean = false,
+    val reconnecting: Boolean = false
 )
 
 sealed class PlayerActionEvent {
@@ -51,14 +63,35 @@ sealed class PlayerActionEvent {
     data class Download(val url: String, val title: String) : PlayerActionEvent()
 }
 
-class PlayerViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = YouTubeRepository(application)
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository,
+    private val connectivity: ConnectivityMonitor,
+    private val pendingActions: PendingActionsRepository
+) : AndroidViewModel(application) {
     private val playerPrefs = PlayerPrefs(application)
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     private val _actionEvents = MutableSharedFlow<PlayerActionEvent>()
     val actionEvents: SharedFlow<PlayerActionEvent> = _actionEvents.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            pendingActions.pendingCount.collect { count ->
+                _state.value = _state.value.copy(pendingSyncCount = count)
+            }
+        }
+    }
+
+    fun setBuffering(buffering: Boolean) {
+        _state.value = _state.value.copy(isBuffering = buffering)
+    }
+
+    fun setReconnecting(reconnecting: Boolean) {
+        _state.value = _state.value.copy(reconnecting = reconnecting)
+    }
 
     fun loadDetails(videoId: String) {
         viewModelScope.launch {
@@ -73,18 +106,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 val metadata = repository.getVideoMetadata(videoId)
-                if (PlaybackRestrictions.blocksPlayback(metadata)) {
-                    _state.value = _state.value.copy(
-                        metadata = metadata,
-                        isLoading = false,
-                        error = PlaybackRestrictions.LIVE_UNAVAILABLE
-                    )
-                    return@launch
-                }
                 val preferredAudio = playerPrefs.resolvePreferredAudioLanguage()
                 val audioTracks = repository.getAudioTrackOptions(videoId)
                 val selectedAudio = resolveAudioSelection(audioTracks, preferredAudio)
-                val qualities = repository.getQualityOptions(videoId, preferredAudio)
+                val audioForStream = selectedAudio?.languageCode ?: preferredAudio
+                val qualities = repository.getQualityOptions(videoId, audioForStream)
                 val subtitles = repository.getSubtitleOptions(videoId)
                 val preferredSubtitle = resolveSubtitleSelection(subtitles)
                 _state.value = _state.value.copy(
@@ -115,44 +141,78 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 _state.value = PlayerUiState(
                     metadata = VideoMetadata(videoId = videoId, title = videoId),
                     isLoading = false,
-                    error = e.message ?: e.javaClass.simpleName
+                    error = MediaErrors.codeFor(e)
                 )
             }
         }
     }
 
     fun toggleLike(videoId: String) {
+        if (!canRunAction(videoId)) return
         viewModelScope.launch {
+            _state.value = _state.value.copy(actionInProgress = true, actionMessage = null)
             try {
                 val current = _state.value.metadata
+                if (!connectivity.isOnline.value) {
+                    val type = if (current.isLiked) PendingActionType.REMOVE_LIKE else PendingActionType.LIKE
+                    pendingActions.enqueue(type, JSONObject().put("videoId", videoId))
+                    _state.value = _state.value.copy(
+                        metadata = current.copy(
+                            likeStatus = if (current.isLiked) {
+                                VideoMetadata.LIKE_STATUS_NONE
+                            } else {
+                                VideoMetadata.LIKE_STATUS_LIKED
+                            }
+                        ),
+                        actionMessage = "action_pending_sync"
+                    )
+                    return@launch
+                }
                 if (current.isLiked) {
                     repository.removeLike(videoId)
                 } else {
                     repository.setLike(videoId)
                 }
                 refreshMetadata(videoId)
-            } catch (e: NotSignedInException) {
-                postActionError("sign_in_required_action")
             } catch (e: Exception) {
-                postActionError(e.message)
+                postActionError(MediaErrors.codeFor(e))
+            } finally {
+                _state.value = _state.value.copy(actionInProgress = false)
             }
         }
     }
 
     fun toggleDislike(videoId: String) {
+        if (!canRunAction(videoId)) return
         viewModelScope.launch {
+            _state.value = _state.value.copy(actionInProgress = true, actionMessage = null)
             try {
                 val current = _state.value.metadata
+                if (!connectivity.isOnline.value) {
+                    val type = if (current.isDisliked) PendingActionType.REMOVE_DISLIKE else PendingActionType.DISLIKE
+                    pendingActions.enqueue(type, JSONObject().put("videoId", videoId))
+                    _state.value = _state.value.copy(
+                        metadata = current.copy(
+                            likeStatus = if (current.isDisliked) {
+                                VideoMetadata.LIKE_STATUS_NONE
+                            } else {
+                                VideoMetadata.LIKE_STATUS_DISLIKED
+                            }
+                        ),
+                        actionMessage = "action_pending_sync"
+                    )
+                    return@launch
+                }
                 if (current.isDisliked) {
                     repository.removeDislike(videoId)
                 } else {
                     repository.setDislike(videoId)
                 }
                 refreshMetadata(videoId)
-            } catch (e: NotSignedInException) {
-                postActionError("sign_in_required_action")
             } catch (e: Exception) {
-                postActionError(e.message)
+                postActionError(MediaErrors.codeFor(e))
+            } finally {
+                _state.value = _state.value.copy(actionInProgress = false)
             }
         }
     }
@@ -177,19 +237,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleSubscribe() {
         val channelId = _state.value.metadata.channelId
-        if (channelId.isNullOrBlank()) return
+        val videoId = _state.value.metadata.videoId
+        if (channelId.isNullOrBlank() || !canRunAction(videoId)) return
         viewModelScope.launch {
+            _state.value = _state.value.copy(actionInProgress = true, actionMessage = null)
             try {
-                if (_state.value.metadata.isSubscribed) {
+                val subscribed = _state.value.metadata.isSubscribed
+                if (!connectivity.isOnline.value) {
+                    val type = if (subscribed) PendingActionType.UNSUBSCRIBE else PendingActionType.SUBSCRIBE
+                    pendingActions.enqueue(type, JSONObject().put("channelId", channelId))
+                    _state.value = _state.value.copy(
+                        metadata = _state.value.metadata.copy(isSubscribed = !subscribed),
+                        actionMessage = "action_pending_sync"
+                    )
+                    return@launch
+                }
+                if (subscribed) {
                     repository.unsubscribe(channelId)
                 } else {
                     repository.subscribe(channelId)
                 }
-                refreshMetadata(_state.value.metadata.videoId)
-            } catch (e: NotSignedInException) {
-                postActionError("sign_in_required_action")
+                refreshMetadata(videoId)
             } catch (e: Exception) {
-                postActionError(e.message)
+                postActionError(MediaErrors.codeFor(e))
+            } finally {
+                _state.value = _state.value.copy(actionInProgress = false)
             }
         }
     }
@@ -201,6 +273,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun download(videoId: String) {
+        if (videoId.isBlank()) return
         viewModelScope.launch {
             try {
                 val url = repository.getDownloadUrl(videoId)
@@ -211,7 +284,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 val title = _state.value.metadata.title.ifBlank { videoId }
                 _actionEvents.emit(PlayerActionEvent.Download(url, title))
             } catch (e: Exception) {
-                postActionError(e.message)
+                postActionError(MediaErrors.codeFor(e))
             }
         }
     }
@@ -221,11 +294,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun postComment(videoId: String, text: String) {
+        if (videoId.isBlank()) return
+        val commentText = text.trim()
+        if (commentText.isEmpty()) {
+            postActionError("comment_empty")
+            return
+        }
         val commentsKey = _state.value.metadata.commentsKey ?: return
         viewModelScope.launch {
-            _state.value = _state.value.copy(commentPosting = true)
+            _state.value = _state.value.copy(commentPosting = true, actionMessage = null)
             try {
-                repository.postComment(commentsKey, text)
+                repository.postComment(commentsKey, commentText)
                 val comments = repository.loadComments(commentsKey)
                 val canPost = repository.canPostComment(commentsKey)
                 _state.value = _state.value.copy(
@@ -234,20 +313,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     commentPosting = false,
                     actionMessage = "comment_posted"
                 )
-            } catch (e: NotSignedInException) {
-                _state.value = _state.value.copy(
-                    commentPosting = false,
-                    actionMessage = "sign_in_required_action"
-                )
             } catch (e: CommentPostException) {
                 _state.value = _state.value.copy(
                     commentPosting = false,
                     actionMessage = e.message ?: "comment_post_failed"
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    commentPosting = false,
-                    actionMessage = e.message ?: "comment_post_failed"
+                _state.value = _state.value.copy(commentPosting = false)
+                postActionError(
+                    if (e is NotSignedInException) MediaErrors.SIGN_IN else MediaErrors.codeFor(e)
                 )
             }
         }
@@ -315,16 +389,45 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         preferredLanguage: String?
     ): AudioTrackOption? = AudioLanguageOptionsHelper.resolveSelection(options, preferredLanguage)
 
-    fun findNextRelatedVideo(currentVideoId: String) =
-        _state.value.metadata.relatedVideos.firstOrNull { it.videoId != currentVideoId }
+    private var autoplayCursor: Int = -1
+
+    fun findNextRelatedVideo(currentVideoId: String): VideoItem? {
+        val related = _state.value.metadata.relatedVideos
+        if (related.isEmpty()) return null
+        if (autoplayCursor < 0 || related.getOrNull(autoplayCursor)?.videoId == currentVideoId) {
+            autoplayCursor = related.indexOfFirst { it.videoId != currentVideoId }
+        } else {
+            autoplayCursor = (autoplayCursor + 1).coerceAtMost(related.lastIndex)
+            if (related.getOrNull(autoplayCursor)?.videoId == currentVideoId) {
+                autoplayCursor = related.indexOfFirst { it.videoId != currentVideoId }
+            }
+        }
+        return related.getOrNull(autoplayCursor)?.takeIf { it.videoId != currentVideoId }
+    }
+
+    fun resetAutoplayCursor() {
+        autoplayCursor = -1
+    }
 
     private suspend fun refreshMetadata(videoId: String) {
         if (videoId.isBlank()) return
-        val metadata = repository.getVideoMetadata(videoId)
-        _state.value = _state.value.copy(metadata = metadata)
+        runCatching { repository.getVideoMetadata(videoId) }
+            .onSuccess { metadata ->
+                _state.value = _state.value.copy(metadata = metadata)
+            }
+            .onFailure { e ->
+                postActionError(MediaErrors.codeFor(e))
+            }
     }
 
     private fun postActionError(keyOrMessage: String?) {
         _state.value = _state.value.copy(actionMessage = keyOrMessage)
+    }
+
+    private fun canRunAction(videoId: String): Boolean {
+        val state = _state.value
+        if (videoId.isBlank()) return false
+        if (state.actionInProgress) return false
+        return state.metadata.videoId == videoId
     }
 }

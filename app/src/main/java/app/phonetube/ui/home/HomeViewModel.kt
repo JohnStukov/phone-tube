@@ -13,7 +13,8 @@ import app.phonetube.core.media.MediaErrors
 import app.phonetube.core.media.VideoItem
 import app.phonetube.core.media.VideoItemMapper
 import app.phonetube.core.media.YouTubeRepository
-
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,7 @@ data class HomeUiState(
     val canLoadMore: Boolean = false,
 
     val error: String? = null,
+    val showingCachedData: Boolean = false,
 
     val feed: HomeFeed = HomeFeed.ALL
 
@@ -57,9 +59,11 @@ enum class HomeFeed {
 
 
 
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val repository = YouTubeRepository(application)
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    application: Application,
+    private val repository: YouTubeRepository
+) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(HomeUiState(isLoading = true))
 
@@ -219,6 +223,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 isLoadingMore = false,
 
                 canLoadMore = page.canLoadMore,
+                showingCachedData = page.isFromCache,
 
                 feed = feed
 

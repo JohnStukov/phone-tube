@@ -13,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,11 +109,12 @@ fun VideoPlayerSurface(
         durationMs = 0L
         scrubPositionMs = 0L
         isScrubbing = false
+        isPlaying = controller.isPlaying()
     }
 
     DisposableEffect(controller, videoId) {
         val activeVideoId = videoId
-        controller.onProgressUpdate = { position, duration ->
+        val progressCallback: (Long, Long) -> Unit = { position, duration ->
             if (controller.getCurrentVideoId() == activeVideoId) {
                 if (!isScrubbingState.value) {
                     positionMs = position.coerceAtLeast(0L)
@@ -123,8 +125,11 @@ fun VideoPlayerSurface(
                 isPlaying = controller.isPlaying()
             }
         }
+        controller.onProgressUpdate = progressCallback
         onDispose {
-            controller.onProgressUpdate = null
+            if (controller.onProgressUpdate === progressCallback) {
+                controller.onProgressUpdate = null
+            }
         }
     }
 
@@ -340,32 +345,18 @@ fun VideoPlayerSurface(
                                 .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (durationMs > 0) {
-                                if (isLive) {
-                                    Text(
-                                        text = stringResource(R.string.live_badge),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    )
-                                    Text(
-                                        text = formatPlayerTime(displayPositionMs),
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(start = 8.dp)
-                                    )
-                                } else {
-                                    Text(
-                                        text = "${formatPlayerTime(displayPositionMs)} / ${formatPlayerTime(durationMs)}",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    )
-                                }
-                            } else if (isLive) {
+                            if (isLive) {
                                 Text(
                                     text = stringResource(R.string.live_badge),
                                     color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            } else if (durationMs > 0) {
+                                Text(
+                                    text = "${formatPlayerTime(displayPositionMs)} / ${formatPlayerTime(durationMs)}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium,
                                     modifier = Modifier.padding(start = 4.dp)
                                 )
                             }
@@ -390,12 +381,12 @@ fun VideoPlayerSurface(
                             }
                         }
 
-                        if (durationMs > 0) {
+                        if (durationMs > 0 && !isLive) {
                             key(videoId) {
                                 SponsorBlockProgressSlider(
                                     value = sliderValue,
                                     durationMs = durationMs,
-                                    sponsorSegments = if (isLive) emptyList() else sponsorSegments,
+                                    sponsorSegments = sponsorSegments,
                                     onValueChange = { value ->
                                         pendingSingleTapJob?.cancel()
                                         isScrubbing = true
@@ -406,12 +397,23 @@ fun VideoPlayerSurface(
                                         controller.seekTo(scrubPositionMs)
                                         positionMs = scrubPositionMs
                                         isScrubbing = false
-                                        if (isLive && scrubPositionMs >= durationMs - 2_000) {
-                                            controller.alignLivePlaybackToEdge()
-                                        }
                                     }
                                 )
                             }
+                        } else if (isLive && durationMs > 0 &&
+                            displayPositionMs < durationMs - 5_000
+                        ) {
+                            Text(
+                                text = stringResource(R.string.go_to_live),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                                    .clickable {
+                                        controller.alignLivePlaybackToEdge()
+                                        showControls()
+                                    }
+                            )
                         }
                     }
                 }

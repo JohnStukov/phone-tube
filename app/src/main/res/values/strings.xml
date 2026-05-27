@@ -11,6 +11,8 @@
     <string name="search_empty">No results</string>
     <string name="clear">Clear</string>
     <string name="cast_unavailable">Cast not available on this device</string>
+    <string name="cast_failed">Could not start casting</string>
+    <string name="cast_no_playback">Play a video before casting</string>
     <string name="notifications_empty">No notifications</string>
     <string name="notifications_sign_in">Sign in to see your notifications</string>
     <string name="cast">Cast</string>
@@ -32,7 +34,6 @@
     <string name="settings_content_region_hint">Affects home, trending and topic feeds. Home reloads when you change this.</string>
     <string name="nav_home">Home</string>
     <string name="nav_shorts">Shorts</string>
-    <string name="nav_create">Create</string>
     <string name="nav_subscriptions">Subscriptions</string>
     <string name="nav_library">You</string>
     <string name="tab_shorts_title">Shorts</string>
@@ -51,7 +52,8 @@
     <string name="comments">Comments</string>
     <string name="related_videos">Related videos</string>
     <string name="live_badge">LIVE</string>
-    <string name="playback_live_unavailable">Live streams and broadcasts are not available yet</string>
+    <string name="playback_live_unavailable">This stream could not be loaded</string>
+    <string name="go_to_live">Go to live</string>
     <string name="sponsor_segments_count">%1$d SponsorBlock segments</string>
     <string name="open_settings">Open settings</string>
     <string name="sign_in_title">Sign in</string>
@@ -123,6 +125,7 @@
     <string name="settings_audio_manual">Choose language</string>
     <string name="audio_track">Audio track</string>
     <string name="audio_track_auto">Automatic</string>
+    <string name="audio_track_original">Original</string>
     <string name="audio_track_unavailable">No alternate audio tracks for this video</string>
 
     <string name="sb_category_sponsor">Sponsor</string>
@@ -142,6 +145,21 @@
     <string name="library_playlists">Playlists</string>
     <string name="library_playlists_empty">No playlists</string>
     <string name="library_playlists_sign_in">Sign in to see your playlists</string>
+    <string name="library_watch_later">Watch later</string>
+    <string name="library_watch_later_empty">No videos in Watch later</string>
+    <string name="library_liked">Liked videos</string>
+    <string name="library_liked_empty">No liked videos yet</string>
+    <string name="notification_marked_read">Notification dismissed</string>
+    <string name="offline_cached_data">Showing saved data (offline)</string>
+    <string name="search_recent">Recent searches</string>
+    <string name="network_offline">No internet connection</string>
+    <string name="network_online">Back online</string>
+    <string name="action_pending_sync">Action will sync when online</string>
+    <string name="player_reconnecting">Reconnecting…</string>
+    <string name="cast_connected">Casting to %1$s</string>
+    <string name="cast_connecting">Connecting to Cast…</string>
+    <string name="cast_disconnected">Cast disconnected</string>
+    <string name="cast_disconnect">Disconnect</string>
 
     <string name="mini_player_close">Close mini player</string>
     <string name="mini_player_play_pause">Play or pause</string>

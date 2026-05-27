@@ -31,7 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 import app.phonetube.ui.feed.VideoFeedList
 import app.phonetube.util.resolveMediaErrorMessage
@@ -41,7 +41,7 @@ import app.phonetube.util.resolveMediaErrorMessage
 fun SearchScreen(
     onBack: () -> Unit,
     onVideoClick: (videoId: String, isLive: Boolean) -> Unit,
-    viewModel: SearchViewModel = viewModel()
+    viewModel: SearchViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -78,7 +78,40 @@ fun SearchScreen(
             )
         }
 
+        if (state.showingCachedData && state.hasSearched) {
+            Text(
+                text = stringResource(R.string.offline_cached_data),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
         when {
+            state.recentQueries.isNotEmpty() &&
+                state.query.isBlank() &&
+                !state.hasSearched -> {
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.search_recent),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    items(state.recentQueries, key = { "recent_$it" }) { recent ->
+                        SearchSuggestionRow(
+                            suggestion = recent,
+                            onClick = { viewModel.search(recent) }
+                        )
+                        Divider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+            }
             state.suggestions.isNotEmpty() && !state.hasSearched -> {
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(state.suggestions, key = { it }) { suggestion ->

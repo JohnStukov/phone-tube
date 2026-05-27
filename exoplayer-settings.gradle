@@ -6,6 +6,7 @@ include prefix + 'library-hls'
 include prefix + 'library-dash'
 include prefix + 'library-ui'
 include prefix + 'extension-okhttp'
+include prefix + 'extension-cast'
 include prefix + 'testutils'
 include prefix + 'testutils-robolectric'
 
@@ -14,5 +15,6 @@ project(prefix + 'library-hls').projectDir = new File(rootDir, 'library/hls')
 project(prefix + 'library-dash').projectDir = new File(rootDir, 'library/dash')
 project(prefix + 'library-ui').projectDir = new File(rootDir, 'library/ui')
 project(prefix + 'extension-okhttp').projectDir = new File(rootDir, 'extensions/okhttp')
+project(prefix + 'extension-cast').projectDir = new File(rootDir, 'extensions/cast')
 project(prefix + 'testutils').projectDir = new File(rootDir, 'testutils')
 project(prefix + 'testutils-robolectric').projectDir = new File(rootDir, 'testutils_robolectric')

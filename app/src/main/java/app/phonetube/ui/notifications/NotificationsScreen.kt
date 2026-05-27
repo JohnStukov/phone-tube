@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
@@ -23,7 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import app.phonetube.R
 import app.phonetube.ui.components.PullRefreshBox
 import app.phonetube.ui.feed.VideoFeedList
@@ -35,7 +36,7 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     onVideoClick: (videoId: String, isLive: Boolean) -> Unit,
     onSignIn: () -> Unit,
-    viewModel: NotificationsViewModel = viewModel()
+    viewModel: NotificationsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -48,6 +49,17 @@ fun NotificationsScreen(
                 }
             }
         )
+
+        if (!state.needsSignIn && state.showingCachedData) {
+            Text(
+                text = stringResource(R.string.offline_cached_data),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+        }
 
         Box(modifier = Modifier.weight(1f)) {
             when {
@@ -76,7 +88,10 @@ fun NotificationsScreen(
                         isLoading = state.isLoading && !state.isRefreshing,
                         error = resolveMediaErrorMessage(state.error),
                         emptyMessage = stringResource(R.string.notifications_empty),
-                        onVideoClick = onVideoClick,
+                        onVideoClick = { videoId, isLive ->
+                            viewModel.onVideoOpened(videoId)
+                            onVideoClick(videoId, isLive)
+                        },
                         modifier = Modifier.fillMaxSize(),
                         isLoadingMore = state.isLoadingMore,
                         canLoadMore = state.canLoadMore,

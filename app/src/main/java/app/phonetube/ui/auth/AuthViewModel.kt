@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.withContext
 
 data class SignInUiState(
@@ -21,8 +23,11 @@ data class SignInUiState(
     val completed: Boolean = false
 )
 
-class AuthViewModel(application: Application) : AndroidViewModel(application) {
-    private val authRepository = AuthRepository.get(application)
+@HiltViewModel
+class AuthViewModel @Inject constructor(
+    application: Application,
+    private val authRepository: AuthRepository
+) : AndroidViewModel(application) {
 
     val authState: StateFlow<AuthState> = authRepository.state
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), authRepository.state.value)

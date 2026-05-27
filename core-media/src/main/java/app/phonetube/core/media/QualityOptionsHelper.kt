@@ -122,10 +122,9 @@ object QualityOptionsHelper {
         var pool = if (compatible.isNotEmpty()) compatible else audioFormats
 
         if (!preferredAudioLanguage.isNullOrBlank()) {
-            val localized = pool.filter {
-                AudioLanguageOptionsHelper.formatMatchesLanguage(it, preferredAudioLanguage)
+            AudioLanguageOptionsHelper.pickBestMatchingFormat(pool, preferredAudioLanguage)?.let {
+                return it.url
             }
-            if (localized.isNotEmpty()) pool = localized
         }
 
         return pool.maxByOrNull { parseBitrate(it.bitrate) }?.url

@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.phonetube.R
+import app.phonetube.core.media.AudioLanguageOptionsHelper
 import app.phonetube.core.media.AudioTrackOption
 import app.phonetube.core.media.SubtitleOption
 import app.phonetube.core.media.SubtitleOptionsHelper
@@ -68,7 +69,7 @@ fun PlayerSettingsSheet(
         ?: stringResource(R.string.subtitles_off)
     val selectedAudioLabel = audioTrackOptions
         .firstOrNull { it.id == selectedAudioTrackId }
-        ?.label
+        ?.let { audioTrackLabel(it) }
         ?: stringResource(R.string.audio_track_auto)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -115,7 +116,7 @@ fun PlayerSettingsSheet(
                 } else {
                     audioTrackOptions.forEach { option ->
                         SettingsRow(
-                            label = option.label,
+                            label = audioTrackLabel(option),
                             selected = option.id == selectedAudioTrackId,
                             onClick = {
                                 onAudioTrackSelected(option)
@@ -347,6 +348,15 @@ private fun SettingsRow(
 private fun localizeSubtitleLabel(option: SubtitleOption): String {
     return if (option.id == SubtitleOptionsHelper.OFF_ID) {
         stringResource(R.string.subtitles_off)
+    } else {
+        option.label
+    }
+}
+
+@Composable
+private fun audioTrackLabel(option: AudioTrackOption): String {
+    return if (option.id == AudioLanguageOptionsHelper.PREFERRED_ORIGINAL) {
+        stringResource(R.string.audio_track_original)
     } else {
         option.label
     }

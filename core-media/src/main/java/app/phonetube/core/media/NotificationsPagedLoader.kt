@@ -3,6 +3,7 @@ package app.phonetube.core.media
 import android.content.Context
 import com.liskovsoft.mediaserviceinterfaces.NotificationsService
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
+import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
 import com.liskovsoft.youtubeapi.service.YouTubeServiceManager
 
 internal class NotificationsPagedLoader(context: Context) {
@@ -39,6 +40,18 @@ internal class NotificationsPagedLoader(context: Context) {
         FeedPage(
             videos = VideoItemMapper.fromGroups(listOf(group)),
             nextPageKey = group.nextPageKey,
-            groupType = group.type
+            groupType = group.type,
+            notificationSources = sourcesByVideoId(group)
         )
+
+    private fun sourcesByVideoId(group: MediaGroup): Map<String, MediaItem> {
+        val map = LinkedHashMap<String, MediaItem>()
+        for (item in group.mediaItems.orEmpty()) {
+            val id = item.videoId?.trim().orEmpty()
+            if (id.isNotEmpty()) {
+                map[id] = item
+            }
+        }
+        return map
+    }
 }

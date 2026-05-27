@@ -8,8 +8,13 @@ import com.liskovsoft.youtubeapi.service.YouTubeServiceManager
 import com.liskovsoft.youtubeapi.service.YouTubeSignInService
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
+import app.phonetube.core.media.cache.PhoneTubeCacheCoordinator
+import app.phonetube.core.media.pending.PendingActionsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -27,11 +32,13 @@ class AuthRepository private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val signInService: YouTubeSignInService = YouTubeSignInService.instance()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
     private val accountListener = com.liskovsoft.mediaserviceinterfaces.SignInService.OnAccountChange {
+        invalidateLocalCache()
         refreshState()
         YouTubeServiceManager.instance().refreshCacheIfNeeded()
     }
@@ -81,6 +88,7 @@ class AuthRepository private constructor(context: Context) {
         signInService.selectAccount(account)
         signInService.invalidateCache()
         signInService.checkAuth()
+        invalidateLocalCache()
         refreshState()
         YouTubeServiceManager.instance().refreshCacheIfNeeded()
     }
@@ -91,8 +99,16 @@ class AuthRepository private constructor(context: Context) {
             signInService.removeAccount(account)
         }
         signInService.invalidateCache()
+        invalidateLocalCache()
         refreshState()
         YouTubeServiceManager.instance().refreshCacheIfNeeded()
+    }
+
+    private fun invalidateLocalCache() {
+        cacheScope.launch {
+            PhoneTubeCacheCoordinator.get(appContext).invalidateAll()
+            PendingActionsRepository.get(appContext).clearAll()
+        }
     }
 
     fun isSignedIn(): Boolean = signInService.isSigned

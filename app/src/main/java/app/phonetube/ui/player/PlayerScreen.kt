@@ -29,7 +29,9 @@ import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,8 +57,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import app.phonetube.PhoneTubeApp
 import app.phonetube.R
+import app.phonetube.cast.CastSessionState
 import app.phonetube.core.media.AuthRepository
 import app.phonetube.core.media.PlaybackRestrictions
 import app.phonetube.core.media.VideoComment
@@ -79,16 +83,18 @@ fun PlayerScreen(
     onSearchClick: () -> Unit = {},
     onCastClick: () -> Unit = {},
     onChannelClick: (channelId: String, channelName: String?) -> Unit = { _, _ -> },
-    viewModel: PlayerViewModel = viewModel()
+    viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val controller = remember(playbackHost) { playbackHost.getOrCreateController() }
+    val castController = remember { (context.applicationContext as PhoneTubeApp).castController }
+    val castState by castController.sessionState.collectAsState()
     val playerState by viewModel.state.collectAsState()
     val metadata = playerState.metadata
-    val playbackIsLive = isLive || metadata.isLive
+    val playbackIsLive = isLive || metadata.isLive || metadata.isLiveContent
     var playbackError by remember { mutableStateOf<String?>(null) }
     var segments by remember { mutableStateOf<List<SeekSegment>>(emptyList()) }
     var isFullscreen by remember { mutableStateOf(false) }
@@ -130,6 +136,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(videoId) {
+        viewModel.resetAutoplayCursor()
         playbackError = null
         controller.onError = { err ->
             playbackError = when (err.message) {
@@ -150,7 +157,6 @@ fun PlayerScreen(
         playerState.metadata.isLive
     ) {
         if (playerState.isLoading || playerState.metadata.videoId != videoId) return@LaunchedEffect
-        if (PlaybackRestrictions.blocksPlayback(playerState.metadata)) return@LaunchedEffect
         playbackHost.onEnterPlayerScreen(
             videoId = videoId,
             isLive = playbackIsLive,
@@ -184,17 +190,41 @@ fun PlayerScreen(
         controller.applyCaptionSize(playerState.captionSize)
     }
 
-    DisposableEffect(controller, playerState.autoplayEnabled, videoId) {
+    LaunchedEffect(videoId, playerState.metadata.relatedVideos) {
+        val next = viewModel.findNextRelatedVideo(videoId) ?: return@LaunchedEffect
+        controller.prefetch(next.videoId)
+    }
+
+    DisposableEffect(controller, playerState.autoplayEnabled, videoId, playbackIsLive) {
+        var lastEndedAt = 0L
+        controller.onBufferingChanged = { buffering -> viewModel.setBuffering(buffering) }
+        controller.onRetryAttempt = { attempt ->
+            if (attempt >= 2) viewModel.setReconnecting(true)
+        }
         controller.onPlaybackEnded = {
-            if (playerState.autoplayEnabled) {
-                val next = viewModel.findNextRelatedVideo(videoId)
-                if (next != null) {
-                    onRelatedVideoClick(next.videoId, next.isLive)
+            if (!playbackIsLive && playerState.autoplayEnabled) {
+                val now = System.currentTimeMillis()
+                if (now - lastEndedAt >= 900L) {
+                    lastEndedAt = now
+                    viewModel.findNextRelatedVideo(videoId)?.let { next ->
+                        onRelatedVideoClick(next.videoId, next.isLive)
+                    }
                 }
             }
         }
         onDispose {
             controller.onPlaybackEnded = null
+            controller.onBufferingChanged = null
+            controller.onRetryAttempt = null
+            viewModel.setBuffering(false)
+            viewModel.setReconnecting(false)
+        }
+    }
+
+    LaunchedEffect(playerState.reconnecting) {
+        if (playerState.reconnecting) {
+            Toast.makeText(context, R.string.player_reconnecting, Toast.LENGTH_SHORT).show()
+            viewModel.setReconnecting(false)
         }
     }
 
@@ -229,6 +259,51 @@ fun PlayerScreen(
                     onCastClick = onCastClick,
                     onSearchClick = onSearchClick
                 )
+                when (castState) {
+                    CastSessionState.Connecting -> {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text(stringResource(R.string.cast_connecting)) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                    CastSessionState.Connected -> {
+                        val deviceName = castController.connectedDeviceName().orEmpty()
+                        AssistChip(
+                            onClick = { castController.disconnect() },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        R.string.cast_connected,
+                                        deviceName.ifBlank { "Cast" }
+                                    )
+                                )
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                    else -> Unit
+                }
+                if (playerState.pendingSyncCount > 0) {
+                    Text(
+                        text = stringResource(R.string.action_pending_sync),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+                }
+                if (playbackIsLive) {
+                    Text(
+                        text = stringResource(R.string.live_badge),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+                }
+                if (playerState.isBuffering) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
 
             VideoPlayerSurface(
